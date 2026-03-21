@@ -1,5 +1,6 @@
 import { state, getObject, getRobotPos, setRobotPos } from './state.js'
 import { navigateTo } from './robot.js'
+import { releaseObjectPhysics } from './physics.js'
 import { remember } from './memory.js'
 import { getSkill, registerSessionSkill, approveSkill, rejectSkill } from './skillRegistry.js'
 import { planInstruction, inventSkill } from './llm.js'
@@ -34,11 +35,8 @@ function buildContext(instruction) {
       const obj = getObject(state.robot.heldObject)
       if (obj) {
         obj.status = 'intact'
-        if (obj._body) {
-          obj._body.setBodyType(2) // dynamic again
-          const p = getRobotPos()
-          obj._body.setTranslation({ x: p.x + 0.4, y: p.y, z: p.z }, true)
-        }
+        const rp = getRobotPos()
+        releaseObjectPhysics(obj.id, rp)
       }
       state.robot.heldObject = null
       state.robot.eyeColor = 0x4488ff

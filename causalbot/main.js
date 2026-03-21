@@ -1,6 +1,6 @@
 import { initScene, renderScene } from './src/scene.js'
 import { initRobot } from './src/robot.js'
-import { initPhysics, stepPhysics } from './src/physics.js'
+import { initPhysics, stepPhysics, applyRobotCollisions } from './src/physics.js'
 import { initSkillRegistry } from './src/skillRegistry.js'
 import { initUI } from './src/ui.js'
 import { updateRobot } from './src/robot.js'
@@ -23,6 +23,7 @@ function animate() {
   requestAnimationFrame(animate)
   const delta = clock.getDelta()
   stepPhysics(delta)
+  applyRobotCollisions()
   updateRobot(delta)
   renderScene()
 }
