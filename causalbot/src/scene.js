@@ -49,7 +49,7 @@ export async function initScene() {
   scene.add(fillLight)
 
   // Load environment
-  const env = await loader.loadAsync('/environment.glb')
+  const env = await loader.loadAsync('/environment1.glb')
   env.scene.traverse(c => {
     if (c.isMesh) {
       c.castShadow = true

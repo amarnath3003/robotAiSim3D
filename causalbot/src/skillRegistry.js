@@ -19,13 +19,13 @@ const BUILTIN_SKILLS = {
   },
   pick_up: {
     name: 'pick_up',
-    code: `if (!context.target) { context.setStatus('No target'); return; } await context.navigateTo(context.target.position[0], 1.2, context.target.position[2]); context.setArm(-1.2); await context.wait(300); context.grab(context.target.id); context.setArm(0); context.setStatus('Picked up!');`,
-    fn: (ctx) => { const F = Object.getPrototypeOf(async function(){}).constructor; return new F('context', `if (!context.target) { context.setStatus('No target'); return; } await context.navigateTo(context.target.position[0], 1.2, context.target.position[2]); context.setArm(-1.2); await context.wait(300); context.grab(context.target.id); context.setArm(0); context.setStatus('Picked up!');`)(ctx) }
+    code: `if (!context.target) { context.setStatus('No target'); return; } const tp = context.target.position; const rp = context.getPos(); const dx = rp.x - tp[0]; const dz = rp.z - tp[2]; const dist = Math.sqrt(dx*dx+dz*dz) || 1; await context.navigateTo(tp[0] + (dx/dist)*0.25, 1.2, tp[2] + (dz/dist)*0.25); context.setArm(-1.2); await context.wait(300); context.grab(context.target.id); context.setArm(0); context.setStatus('Picked up!');`,
+    fn: (ctx) => { const F = Object.getPrototypeOf(async function(){}).constructor; return new F('context', `if (!context.target) { context.setStatus('No target'); return; } const tp = context.target.position; const rp = context.getPos(); const dx = rp.x - tp[0]; const dz = rp.z - tp[2]; const dist = Math.sqrt(dx*dx+dz*dz) || 1; await context.navigateTo(tp[0] + (dx/dist)*0.25, 1.2, tp[2] + (dz/dist)*0.25); context.setArm(-1.2); await context.wait(300); context.grab(context.target.id); context.setArm(0); context.setStatus('Picked up!');`)(ctx) }
   },
   pick_up_object: {
     name: 'pick_up_object',
-    code: `if (!context.target) { context.setStatus('No target'); return; } await context.navigateTo(context.target.position[0], 1.2, context.target.position[2]); context.setArm(-1.2); await context.wait(300); context.grab(context.target.id); context.setArm(0); context.setStatus('Picked up!');`,
-    fn: (ctx) => { const F = Object.getPrototypeOf(async function(){}).constructor; return new F('context', `if (!context.target) { context.setStatus('No target'); return; } await context.navigateTo(context.target.position[0], 1.2, context.target.position[2]); context.setArm(-1.2); await context.wait(300); context.grab(context.target.id); context.setArm(0); context.setStatus('Picked up!');`)(ctx) }
+    code: `if (!context.target) { context.setStatus('No target'); return; } const tp = context.target.position; const rp = context.getPos(); const dx = rp.x - tp[0]; const dz = rp.z - tp[2]; const dist = Math.sqrt(dx*dx+dz*dz) || 1; await context.navigateTo(tp[0] + (dx/dist)*0.25, 1.2, tp[2] + (dz/dist)*0.25); context.setArm(-1.2); await context.wait(300); context.grab(context.target.id); context.setArm(0); context.setStatus('Picked up!');`,
+    fn: (ctx) => { const F = Object.getPrototypeOf(async function(){}).constructor; return new F('context', `if (!context.target) { context.setStatus('No target'); return; } const tp = context.target.position; const rp = context.getPos(); const dx = rp.x - tp[0]; const dz = rp.z - tp[2]; const dist = Math.sqrt(dx*dx+dz*dz) || 1; await context.navigateTo(tp[0] + (dx/dist)*0.25, 1.2, tp[2] + (dz/dist)*0.25); context.setArm(-1.2); await context.wait(300); context.grab(context.target.id); context.setArm(0); context.setStatus('Picked up!');`)(ctx) }
   },
   release: {
     name: 'release',

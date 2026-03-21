@@ -6,7 +6,7 @@ const loader = new GLTFLoader()
 let root, armMesh, handMesh, eyeMesh
 
 export async function initRobot() {
-  const gltf = await loader.loadAsync('/robot.glb')
+  const gltf = await loader.loadAsync('/robot1.glb')
   root = gltf.scene
 
   root.traverse(c => {
@@ -64,11 +64,16 @@ export function updateRobot(delta) {
     const obj = state.world.objects[state.robot.heldObject]
     const mesh = state.scene.three?.getObjectByName(state.robot.heldObject)
     if (obj && mesh) {
-      const hp = getRobotPos()
-      obj.position[0] = hp.x + 0.4
-      obj.position[1] = hp.y + 0.3
-      obj.position[2] = hp.z
-      mesh.position.set(...obj.position)
+      // Position object at arm tip
+      const armLength = 0.5
+      const angle = root.rotation.y
+      const handX = root.position.x + Math.sin(angle) * armLength
+      const handY = root.position.y - 0.1
+      const handZ = root.position.z + Math.cos(angle) * armLength
+      obj.position[0] = handX
+      obj.position[1] = handY
+      obj.position[2] = handZ
+      mesh.position.set(handX, handY, handZ)
     }
   }
 }
