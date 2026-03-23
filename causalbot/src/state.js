@@ -13,9 +13,9 @@ export const state = {
   // Ground truth world objects — single source of truth
   world: {
     objects: {
-      object_glass: { id: 'object_glass', name: 'glass', mass: 0.3, fragility: 0.9, snapable: true,  status: 'intact', position: [0, 0.85, 0],    size: [0.08, 0.12, 0.08] },
-      object_box:   { id: 'object_box',   name: 'box',   mass: 2.0, fragility: 0.1, snapable: true,  status: 'intact', position: [0.3, 0.3,  0.8],  size: [0.35, 0.35, 0.35] },
-      object_ball:  { id: 'object_ball',  name: 'ball',  mass: 0.5, fragility: 0.2, snapable: true,  status: 'intact', position: [1.2, 0.2,  0.5],  size: [0.2,  0.2,  0.2]  },
+      object_glass: { id: 'object_glass', name: 'glass', mass: 0.3, fragility: 0.7, snapable: true,  status: 'intact', position: [0, 0.9, 3], size: [0.08, 0.12, 0.08] },
+      object_box:   { id: 'object_box',   name: 'box',   mass: 2.0, fragility: 0.1, snapable: true,  status: 'intact', position: [-1.9, 0.3, 1.1],  size: [0.35, 0.35, 0.35] },
+      object_ball:  { id: 'object_ball',  name: 'ball',  mass: 0.5, fragility: 0.2, snapable: true,  status: 'intact', position: [2.2, 0.2, -2.0],  size: [0.2,  0.2,  0.2]  },
       table:        { id: 'table',        name: 'table', mass: 20,  fragility: 0.0, snapable: false, status: 'intact', position: [0,   0.4,  0],    size: [1.2, 0.8, 0.7]   },
     },
     roomBounds: { minX: -3, maxX: 3, minZ: -3, maxZ: 3 },
