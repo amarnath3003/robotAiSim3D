@@ -18,6 +18,10 @@ export async function initRobot() {
     if (c.name === 'robot_eye')  eyeMesh  = c
   })
 
+  if (armMesh && handMesh && handMesh.parent !== armMesh) {
+    armMesh.attach(handMesh)
+  }
+
   const p = getRobotPos()
   root.position.set(p.x, p.y, p.z)
   state.scene.three.add(root)
