@@ -52,11 +52,22 @@ export function updateRobot(delta) {
 
   // Eye color follows status
   if (eyeMesh?.material) {
-    const target = new THREE.Color(state.robot.eyeColor)
-    eyeMesh.material.emissive?.lerp(target, 0.1)
-    if (!eyeMesh.material.emissive) {
-      eyeMesh.material.color.lerp(target, 0.1)
-    }
+    const targetColor = new THREE.Color(state.robot.eyeColor)
+    const materials = Array.isArray(eyeMesh.material) ? eyeMesh.material : [eyeMesh.material]
+    const pulse = state.robot.status === 'thinking'
+      ? 1.8 + Math.sin(performance.now() * 0.01) * 0.6
+      : 0.7
+
+    materials.forEach(material => {
+      if (material.emissive) {
+        material.emissive.lerp(targetColor, 0.15)
+        if (typeof material.emissiveIntensity === 'number') {
+          material.emissiveIntensity = THREE.MathUtils.lerp(material.emissiveIntensity, pulse, 0.2)
+        }
+      } else {
+        material.color?.lerp(targetColor, 0.1)
+      }
+    })
   }
 
   // Hold object — move with robot

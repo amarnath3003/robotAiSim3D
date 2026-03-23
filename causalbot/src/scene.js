@@ -1,6 +1,9 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js'
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js'
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { state } from './state.js'
 
@@ -54,15 +57,27 @@ export async function initScene() {
   })
   scene.add(env.scene)
 
+  const composer = new EffectComposer(renderer)
+  composer.addPass(new RenderPass(scene, camera))
+  const bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    0.9,
+    0.25,
+    0.8
+  )
+  composer.addPass(bloomPass)
+
   state.scene.three = scene
   state.scene.camera = camera
   state.scene.renderer = renderer
   state.scene.controls = controls
+  state.scene.composer = composer
 
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight
     camera.updateProjectionMatrix()
     renderer.setSize(window.innerWidth, window.innerHeight)
+    composer.setSize(window.innerWidth, window.innerHeight)
   })
 
   console.log('Scene ready')
@@ -70,7 +85,11 @@ export async function initScene() {
 
 export function renderScene() {
   state.scene.controls?.update()
-  state.scene.renderer?.render(state.scene.three, state.scene.camera)
+  if (state.scene.composer) {
+    state.scene.composer.render()
+  } else {
+    state.scene.renderer?.render(state.scene.three, state.scene.camera)
+  }
 }
 
 // Get Three.js mesh by object id
