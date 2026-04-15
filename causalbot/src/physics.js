@@ -1,9 +1,11 @@
 import RAPIER from '@dimforge/rapier3d-compat'
 import { state } from './state.js'
+import * as THREE from 'three'
 
 let world
 let eventQueue
 let accumulator = 0
+let debugBody
 const FIXED_STEP = 1 / 60  // 60Hz fixed timestep
 
 export async function initPhysics() {
@@ -90,6 +92,21 @@ export async function initPhysics() {
     angularDamping: 0.05,     // keeps spinning
     gravityScale: 1.0,
   })
+
+  // Debug Robot Physics — Dynamic with locked rotations
+  const drp = state.debugRobot.position
+  debugBody = world.createRigidBody(
+    RAPIER.RigidBodyDesc.dynamic()
+      .setTranslation(drp[0], drp[1], drp[2])
+      .setLinearDamping(0.5)
+      .setAngularDamping(2.0)
+  )
+  debugBody.setEnabledRotations(false, true, false, true)
+  world.createCollider(
+    RAPIER.ColliderDesc.capsule(0.15, 0.1).setFriction(0.2).setRestitution(0.1),
+    debugBody
+  )
+  state.debugRobot._body = debugBody
 
   state.scene.rapierWorld = world
   console.log('Physics ready — full simulation active')
@@ -308,6 +325,75 @@ export function releaseObjectPhysics(objectId, robotPos, forwardAngle = 0) {
   obj._body.setLinvel({ x: 0, y: -0.5, z: 0 }, true)
   obj._body.setAngvel({ x: 0, y: 0, z: 0 }, true)
   obj._body.wakeUp()
+}
+
+export function stepDebugRobotPhysics(keys, delta) {
+  if (!debugBody || state.controlMode !== 'debug') return
+
+  const vel = debugBody.linvel()
+  const moveSpeed = 4.0
+  const jumpSpeed = 5.0
+  
+  let inputX = 0
+  let inputZ = 0
+  if (keys.w) inputZ -= 1
+  if (keys.s) inputZ += 1
+  if (keys.a) inputX -= 1
+  if (keys.d) inputX += 1
+
+  // Get camera orientation
+  const camera = state.scene.camera
+  if (camera && (inputX !== 0 || inputZ !== 0)) {
+    // Forward vector (Z axis of camera, ignoring Y pitch)
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion)
+    forward.y = 0
+    if (forward.lengthSq() > 0) forward.normalize()
+    else forward.set(0, 0, -1)
+
+    // Right vector (X axis of camera, ignoring Y pitch)
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion)
+    right.y = 0
+    if (right.lengthSq() > 0) right.normalize()
+    else right.set(1, 0, 0)
+
+    // Combine based on input
+    const direction = new THREE.Vector3()
+    direction.addScaledVector(forward, -inputZ) // inputZ is negative for W, so we want positive forward. Wait, if W is pressed, inputZ = -1, so -inputZ = 1
+    direction.addScaledVector(right, inputX)
+
+    if (direction.lengthSq() > 0) direction.normalize()
+
+    debugBody.setLinvel({ x: direction.x * moveSpeed, y: vel.y, z: direction.z * moveSpeed }, true)
+    
+    // Rotate to face movement
+    const angle = Math.atan2(direction.x, direction.z)
+    debugBody.setRotation(
+      { x: 0, y: Math.sin(angle/2), z: 0, w: Math.cos(angle/2) },
+      true
+    )
+  } else {
+    // Friction-like stop on X/Z
+    debugBody.setLinvel({ x: vel.x * 0.8, y: vel.y, z: vel.z * 0.8 }, true)
+  }
+
+  // Proper Jump check
+  const ray = new RAPIER.Ray(debugBody.translation(), { x: 0, y: -1, z: 0 })
+  const hit = world.castRay(ray, 0.3, true)
+  const isGrounded = hit !== null
+
+  if (keys.space && isGrounded && vel.y <= 0.1) {
+    debugBody.setLinvel({ x: debugBody.linvel().x, y: jumpSpeed, z: debugBody.linvel().z }, true)
+  }
+
+  // Sync back to state
+  const t = debugBody.translation()
+  const r = debugBody.rotation()
+  state.debugRobot.position[0] = t.x
+  state.debugRobot.position[1] = t.y
+  state.debugRobot.position[2] = t.z
+  
+  // Convert quaternion to Y angle for state (approx)
+  state.debugRobot.rotation = 2 * Math.atan2(r.y, r.w)
 }
 
 export function getWorld() { return world }

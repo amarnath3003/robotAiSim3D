@@ -4,6 +4,7 @@ import { state, getRobotPos, setRobotPos } from './state.js'
 
 const loader = new GLTFLoader()
 let root, armMesh, handMesh, eyeMesh
+let debugRoot, debugArmMesh, debugHandMesh, debugEyeMesh
 let heldMeshParentedId = null
 
 export async function initRobot() {
@@ -30,6 +31,32 @@ export async function initRobot() {
   console.log('Robot ready. arm:', !!armMesh, 'eye:', !!eyeMesh)
 }
 
+export async function initDebugRobot() {
+  const gltf = await loader.loadAsync('/robot1.glb')
+  debugRoot = gltf.scene
+
+  debugRoot.traverse(c => {
+    if (!c.isMesh) return
+    c.castShadow = true
+    if (c.name === 'robot_arm')  debugArmMesh  = c
+    if (c.name === 'robot_hand') debugHandMesh = c
+    if (c.name === 'robot_eye')  debugEyeMesh  = c
+  })
+
+  // Set distinct eye color
+  if (debugEyeMesh?.material) {
+    const mat = Array.isArray(debugEyeMesh.material) ? debugEyeMesh.material[0] : debugEyeMesh.material
+    const newMat = mat.clone()
+    newMat.color.set(state.debugRobot.eyeColor)
+    if (newMat.emissive) newMat.emissive.set(state.debugRobot.eyeColor)
+    debugEyeMesh.material = newMat
+  }
+
+  const p = state.debugRobot.position
+  debugRoot.position.set(p[0], p[1], p[2])
+  state.scene.three.add(debugRoot)
+}
+
 export function updateRobot(delta) {
   if (!root) return
 
@@ -48,31 +75,26 @@ export function updateRobot(delta) {
     root.rotation.y = THREE.MathUtils.lerp(root.rotation.y, angle, 0.12)
   }
 
-  // Arm follows state
-  if (armMesh) {
-    armMesh.rotation.x = THREE.MathUtils.lerp(
-      armMesh.rotation.x, state.robot.armAngle, 0.1
-    )
-  }
-
-  // Eye color follows status
+  // AI Robot Eye pulse
   if (eyeMesh?.material) {
     const targetColor = new THREE.Color(state.robot.eyeColor)
     const materials = Array.isArray(eyeMesh.material) ? eyeMesh.material : [eyeMesh.material]
     const pulse = state.robot.status === 'thinking'
       ? 1.8 + Math.sin(performance.now() * 0.01) * 0.6
       : 0.7
-
-    materials.forEach(material => {
-      if (material.emissive) {
-        material.emissive.lerp(targetColor, 0.15)
-        if (typeof material.emissiveIntensity === 'number') {
-          material.emissiveIntensity = THREE.MathUtils.lerp(material.emissiveIntensity, pulse, 0.2)
-        }
-      } else {
-        material.color?.lerp(targetColor, 0.1)
+    materials.forEach(m => {
+      if (m.emissive) {
+        m.emissive.lerp(targetColor, 0.15)
+        m.emissiveIntensity = THREE.MathUtils.lerp(m.emissiveIntensity || 0, pulse, 0.2)
       }
     })
+  }
+
+  // Arm follows state
+  if (armMesh) {
+    armMesh.rotation.x = THREE.MathUtils.lerp(
+      armMesh.rotation.x, state.robot.armAngle, 0.1
+    )
   }
 
   // Hold object — move with robot
@@ -99,6 +121,23 @@ export function updateRobot(delta) {
       state.scene.three.attach(releasedMesh)
     }
     heldMeshParentedId = null
+  }
+}
+
+export function updateDebugRobot(delta) {
+  if (!debugRoot) return
+
+  const p = state.debugRobot.position
+  const r = state.debugRobot.rotation
+
+  // Immediate sync for debug robot (physics driven)
+  debugRoot.position.set(p[0], p[1], p[2])
+  debugRoot.rotation.y = r
+
+  // Debug Robot Eye pulse (distinct)
+  if (debugEyeMesh?.material) {
+    const m = Array.isArray(debugEyeMesh.material) ? debugEyeMesh.material[0] : debugEyeMesh.material
+    m.emissiveIntensity = 1.0 + Math.sin(performance.now() * 0.005) * 0.3
   }
 }
 

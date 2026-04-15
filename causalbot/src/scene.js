@@ -83,8 +83,26 @@ export async function initScene() {
   console.log('Scene ready')
 }
 
+let lastMode = 'ai'
+
 export function renderScene() {
+  state.scene.controls.enabled = true
+  
+  if (state.controlMode !== lastMode) {
+    if (state.controlMode === 'ai') {
+      const p = state.robot.position
+      state.scene.controls.target.set(p[0], p[1] + 0.4, p[2])
+    }
+    lastMode = state.controlMode
+  }
+
+  if (state.controlMode === 'debug') {
+    const target = state.debugRobot.position
+    state.scene.controls.target.lerp(new THREE.Vector3(target[0], target[1] + 0.4, target[2]), 0.1)
+  }
+
   state.scene.controls?.update()
+
   if (state.scene.composer) {
     state.scene.composer.render()
   } else {

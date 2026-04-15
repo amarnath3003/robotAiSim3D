@@ -10,6 +10,15 @@ export const state = {
     eyeColor: 0x4488ff,
   },
 
+  debugRobot: {
+    position: new Float32Array([1.5, 0.35, 1.5]), // starts slightly offset
+    rotation: 0,
+    eyeColor: 0xffaa00, // Orange eyes for debug robot
+    status: 'idle',
+  },
+
+  controlMode: 'ai', // 'ai' | 'debug'
+
   // Ground truth world objects — single source of truth
   world: {
     objects: {
