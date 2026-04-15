@@ -26,28 +26,6 @@ export async function initPhysics() {
     floor
   )
 
-  // Table top
-  const tableTop = world.createRigidBody(
-    RAPIER.RigidBodyDesc.fixed().setTranslation(0, 0.78, 0)
-  )
-  world.createCollider(
-    RAPIER.ColliderDesc.cuboid(0.7, 0.04, 0.4)
-      .setFriction(0.7)
-      .setRestitution(0.1),
-    tableTop
-  )
-
-  // Table legs — 4 thin pillars so objects slide off correctly
-  ;[[-0.65, -0.35], [-0.65, 0.35], [0.65, -0.35], [0.65, 0.35]].forEach(([x, z]) => {
-    const leg = world.createRigidBody(
-      RAPIER.RigidBodyDesc.fixed().setTranslation(x, 0.38, z)
-    )
-    world.createCollider(
-      RAPIER.ColliderDesc.cuboid(0.03, 0.38, 0.03).setFriction(0.5),
-      leg
-    )
-  })
-
   // Room walls — objects bounce off them
   ;[
     { pos: [0, 1.5, -3.0], size: [3.5, 1.5, 0.05] },

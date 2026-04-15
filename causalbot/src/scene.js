@@ -53,6 +53,11 @@ export async function initScene() {
     if (c.isMesh) {
       c.castShadow = true
       c.receiveShadow = true
+      
+      // Hide table for now
+      if (c.name.toLowerCase().includes('table')) {
+        c.visible = false
+      }
     }
   })
   scene.add(env.scene)
