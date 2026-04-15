@@ -26,13 +26,13 @@ function animate() {
   const delta = clock.getDelta()
   const keys = getKeys()
 
+  updateRobot(delta)
+  updateDebugRobot(delta)
+
   stepPhysics(delta)
   stepDebugRobotPhysics(keys, delta)
   
   applyRobotCollisions()
-  
-  updateRobot(delta)
-  updateDebugRobot(delta)
   
   renderScene()
 }

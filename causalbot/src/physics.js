@@ -170,18 +170,19 @@ function setupObject(id, cfg) {
 export function stepPhysics(delta) {
   if (!world) return
 
+  // Sync AI robot physics body TO its visual interpolation BEFORE we step.
+  // This ensures the physics body is in the right place for the current frame.
+  const aiMesh = state.scene.three?.getObjectByName('aiRobot')
+  if (aiMesh && state.robot._body) {
+    state.robot._body.setNextKinematicTranslation(aiMesh.position)
+    state.robot._body.setNextKinematicRotation(aiMesh.quaternion)
+  }
+
   // Fixed timestep accumulator — decouples physics from frame rate
   accumulator += Math.min(delta, 0.05)  // cap at 50ms to prevent spiral of death
   while (accumulator >= FIXED_STEP) {
     world.step(eventQueue)
     accumulator -= FIXED_STEP
-  }
-
-  // Sync AI robot physics to its visual interpolation
-  const aiMesh = state.scene.three?.getObjectByName('aiRobot')
-  if (aiMesh && state.robot._body) {
-    state.robot._body.setNextKinematicTranslation(aiMesh.position)
-    state.robot._body.setNextKinematicRotation(aiMesh.quaternion)
   }
 
   // Process collision events — detect hard impacts
@@ -315,8 +316,25 @@ function shatterGlass(obj) {
 }
 
 export function applyRobotCollisions() {
-  // Legacy force-based repelling is no longer used.
-  // AI robot now uses physical kinematic collision shapes.
+  if (!world) return
+  
+  // Proximity Wakeup for AI Robot
+  // We don't apply forces anymore (kinematic body handles that), but we DO
+  // wake up sleeping objects near the robot so they respond to physical contact.
+  const rx = state.robot.position[0]
+  const rz = state.robot.position[2]
+
+  Object.values(state.world.objects).forEach(obj => {
+    if (!obj._body || obj.status === 'held') return
+    const op = obj._body.translation()
+    const dx = op.x - rx
+    const dz = op.z - rz
+    const distSq = dx*dx + dz*dz
+
+    if (distSq < 1.0) { // dentro de 1m radius
+      obj._body.wakeUp()
+    }
+  })
 }
 
 export function releaseObjectPhysics(objectId, robotPos, forwardAngle = 0) {
