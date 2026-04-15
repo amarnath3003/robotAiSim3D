@@ -4,7 +4,7 @@ import { releaseObjectPhysics } from './physics.js'
 import { remember } from './memory.js'
 import { getSkill, registerSessionSkill, approveSkill, rejectSkill } from './skillRegistry.js'
 import { planInstruction, inventSkill } from './llm.js'
-import { showThought } from './ui.js'
+import { showThoughts, clearThoughts } from './ui.js'
 
 // The context object passed to every skill function
 function buildContext(instruction) {
@@ -74,7 +74,8 @@ export async function handleInstruction(instruction) {
     if (!plan) { state.execution.running = false; return }
 
     console.log('Plan:', plan)
-    if (plan.thought) showThought(plan.thought)
+    if (plan.thoughts) showThoughts(plan.thoughts)
+    else if (plan.thought) showThoughts([plan.thought])
 
     // Step 2 — if new skill needed, invent it
     if (plan.needsNewSkill && plan.newSkillName) {

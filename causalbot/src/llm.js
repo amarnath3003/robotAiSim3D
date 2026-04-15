@@ -41,9 +41,9 @@ SKILLS: ${getAllSkillNames().join(',')}
 INSTRUCTION: "${instruction}"
 
 Return compact JSON only, no spaces, no markdown:
-{"thought":"reasoning here","plan":"x","actions":[{"skill":"s","args":{"target":"id"},"description":"x"}],"needsNewSkill":false,"newSkillName":null}
+{"thoughts":["step1","step2","step3"],"plan":"x","actions":[{"skill":"s","args":{"target":"id"},"description":"x"}],"needsNewSkill":false,"newSkillName":null}
 
-In "thought", explain your reasoning step-by-step in under 15 words.
+In "thoughts", provide 3-4 distinct reasoning steps as an array of strings.
 Keep "plan" value under 5 words. Keep "description" under 5 words.`
 }
 

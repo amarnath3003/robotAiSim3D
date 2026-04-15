@@ -29,23 +29,30 @@ export function initUI() {
   console.log('UI ready')
 }
 
-let thoughtTimeout = null
+export function showThoughts(thoughtArray) {
+  const sidebar = document.getElementById('thought-sidebar')
+  const list = document.getElementById('thought-list')
+  if (!sidebar || !list) return
 
-export function showThought(text) {
-  const el = document.getElementById('thought-bubble')
-  if (!el) return
+  clearThoughts()
+  sidebar.classList.add('visible')
 
-  clearTimeout(thoughtTimeout)
-  el.textContent = text
-  el.classList.add('visible')
+  thoughtArray.forEach((text, i) => {
+    const el = document.createElement('div')
+    el.className = 'thought-step'
+    el.textContent = text
+    list.appendChild(el)
 
-  // Auto-hide after 8 seconds if not cleared earlier
-  thoughtTimeout = setTimeout(() => {
-    el.classList.remove('visible')
-  }, 8000)
+    // Staggered animation
+    setTimeout(() => {
+      el.classList.add('active')
+    }, i * 600)
+  })
 }
 
-export function clearThought() {
-  const el = document.getElementById('thought-bubble')
-  if (el) el.classList.remove('visible')
+export function clearThoughts() {
+  const sidebar = document.getElementById('thought-sidebar')
+  const list = document.getElementById('thought-list')
+  if (sidebar) sidebar.classList.remove('visible')
+  if (list) list.innerHTML = ''
 }
