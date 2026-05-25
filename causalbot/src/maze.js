@@ -1,11 +1,11 @@
 import * as THREE from 'three'
 
 // ─── Maze Configuration ──────────────────────────────────────────────────────
-const ROWS   = 17       // 17×17 cells = ~15m × 15m map
-const COLS   = 17
-const CELL   = 0.9      // meters per cell
-const WALL_H = 1.4      // wall height
-const WALL_T = 0.10     // wall thickness
+const ROWS   = 15       // 15×15 cells
+const COLS   = 15
+const CELL   = 3.0      // meters per cell (Wider corridors!)
+const WALL_H = 3.5      // much taller walls
+const WALL_T = 0.30     // thicker walls
 
 // ─── State ───────────────────────────────────────────────────────────────────
 let mazeMeshGroup  = null

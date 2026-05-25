@@ -42,7 +42,7 @@ export async function initPhysics() {
   // ── Floor ──
   const floor = world.createRigidBody(RAPIER.RigidBodyDesc.fixed())
   world.createCollider(
-    RAPIER.ColliderDesc.cuboid(10, 0.05, 10)
+    RAPIER.ColliderDesc.cuboid(100, 0.05, 100)
       .setFriction(1.0)
       .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Max)
       .setRestitution(0.02)
@@ -65,13 +65,16 @@ export async function initPhysics() {
     )
   })
 
-  // ── Helper: best-fit convex hull or fallback ──
-  function getBestCollider(id, fallbackDesc) {
+  // ── Helper: exact trimesh or convex hull ──
+  function getBestCollider(id, fallbackDesc, asTrimesh = false) {
     const root = state.scene.three?.getObjectByName(id)
     if (!root) return fallbackDesc
     if (state.scene.three) state.scene.three.updateMatrixWorld(true)
 
     const vertices = []
+    const indices = []
+    let indexOffset = 0
+
     root.traverse(c => {
       if (c.isMesh && c.geometry?.attributes.position) {
         const pos     = c.geometry.attributes.position
@@ -84,12 +87,28 @@ export async function initPhysics() {
           v.fromBufferAttribute(pos, i).applyMatrix4(m)
           vertices.push(v.x, v.y, v.z)
         }
+        
+        if (asTrimesh) {
+          if (c.geometry.index) {
+            for (let i = 0; i < c.geometry.index.count; i++) {
+              indices.push(c.geometry.index.getX(i) + indexOffset)
+            }
+          } else {
+            for (let i = 0; i < pos.count; i++) indices.push(i + indexOffset)
+          }
+          indexOffset += pos.count
+        }
       }
     })
 
     if (vertices.length >= 9) {
-      const desc = RAPIER.ColliderDesc.convexHull(new Float32Array(vertices))
-      if (desc) return desc
+      if (asTrimesh && indices.length >= 3) {
+        const desc = RAPIER.ColliderDesc.trimesh(new Float32Array(vertices), new Uint32Array(indices))
+        if (desc) return desc
+      } else {
+        const desc = RAPIER.ColliderDesc.convexHull(new Float32Array(vertices))
+        if (desc) return desc
+      }
     }
     return fallbackDesc
   }

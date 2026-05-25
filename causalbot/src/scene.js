@@ -49,9 +49,9 @@ export async function initScene(mazeMode = false) {
 
   if (mazeMode) {
     // Large floor for the maze (no walls — maze.js adds them)
-    const floorGeo = new THREE.PlaneGeometry(30, 30)
+    const floorGeo = new THREE.PlaneGeometry(60, 60)
     floorGeo.rotateX(-Math.PI / 2)
-    const floorMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.95, metalness: 0.0 })
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.95, metalness: 0.0 })
     const floor = new THREE.Mesh(floorGeo, floorMat)
     floor.receiveShadow = true
     floor.name = 'mazeFloor'

@@ -35,12 +35,19 @@ async function init() {
     addMazeWalls(wallSpecs)
     console.log(`[Main] Maze ready — ${wallSpecs.length} wall colliders added`)
 
-    // Override robot start position to maze center
+    // Override robot start position to maze center (higher up so it drops in)
     const start = getStartPosition()
     if (state.robot._body) {
-      state.robot._body.setNextKinematicTranslation({ x: start.x, y: 0.35, z: start.z })
+      state.robot._body.setNextKinematicTranslation({ x: start.x, y: 1.5, z: start.z })
     }
-    state.robot.position = [start.x, 0.35, start.z]
+    state.robot.position = [start.x, 1.5, start.z]
+
+    // Hide debug robot in maze mode
+    const debugMesh = state.scene.three.getObjectByName('debugRobot')
+    if (debugMesh) debugMesh.visible = false
+    if (state.debugRobot._body) {
+      state.debugRobot._body.setTranslation({ x: 0, y: -100, z: 0 }, true)
+    }
 
     // Show maze goal on HUD
     const goal = getGoalPosition()

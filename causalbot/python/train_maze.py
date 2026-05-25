@@ -39,7 +39,7 @@ class MazeEnv(gym.Env):
 
         # 13-dim obs: [dist, angle, 11 lidar]
         low  = np.array([0.0, -np.pi] + [0.0] * 11, dtype=np.float32)
-        high = np.array([20.0, np.pi] + [5.0] * 11, dtype=np.float32)  # dist up to 20m for big maze
+        high = np.array([70.0, np.pi] + [5.0] * 11, dtype=np.float32)  # dist up to 70m for massive maze
         self.observation_space = spaces.Box(low=low, high=high, dtype=np.float32)
 
         self.action_space = spaces.Box(
@@ -50,7 +50,7 @@ class MazeEnv(gym.Env):
 
         self.state        = np.zeros(13, dtype=np.float32)
         self.target_goal  = np.array([0.0, 0.0])
-        self.max_steps    = 2000   # longer episodes for bigger maze
+        self.max_steps    = 8000   # much longer episodes for massive 51x51 maze
         self.current_step = 0
         self.websocket    = None
         self.latest_prompt = None
