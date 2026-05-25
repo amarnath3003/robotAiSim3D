@@ -15,6 +15,7 @@ import json
 import asyncio
 import threading
 import time
+import math
 
 import numpy as np
 import gymnasium as gym
@@ -55,6 +56,7 @@ class MazeEnv(gym.Env):
         self.start_dist   = 0.0   # track total progress to detect spinning
         self.max_steps    = 3000  # shorter episodes = faster learning signal
         self.current_step = 0
+        self.stagnation_counter = 0
         self.websocket    = None
         self.latest_prompt = None
 
@@ -141,6 +143,7 @@ class MazeEnv(gym.Env):
         self.prev_dist    = float(self.state[0])   # record start distance
         self.start_dist   = float(self.state[0])
         self.current_step = 0
+        self.stagnation_counter = 0
         return self.state, {}
 
     def step(self, action):
@@ -153,11 +156,15 @@ class MazeEnv(gym.Env):
 
         self._state_event.clear()
         msg = json.dumps({'type': 'action', 'action': [linear, angular]})
-        asyncio.run_coroutine_threadsafe(
-            self.websocket.send(msg), self.loop
-        ).result(timeout=5)
-
-        self._state_event.wait(timeout=5)
+        
+        try:
+            asyncio.run_coroutine_threadsafe(
+                self.websocket.send(msg), self.loop
+            ).result(timeout=5)
+            self._state_event.wait(timeout=5)
+        except Exception as e:
+            print(f"WebSocket communication error: {e}")
+            return self.state, -1.0, True, False, {}
 
         target_dist = float(self.state[0])
         lidar_min   = float(np.min(self.state[2:]))   # closest obstacle
@@ -166,21 +173,26 @@ class MazeEnv(gym.Env):
 
         terminated = False
         truncated  = False
+        reward = 0.0
 
-        # ── Collision: any ray dangerously close (robot radius is 0.25m) ──
-        if lidar_min < 0.28:
-            reward = -15.0
+        if abs(self.prev_dist - target_dist) < 0.02:
+            self.stagnation_counter += 1
+        else:
+            self.stagnation_counter = 0
+
+        # ── Goal reached (PRIORITY 1) ──
+        if target_dist < 0.6:
+            reward = 100.0  # Massive reward for winning
+            terminated = True
+
+        # ── Collision (PRIORITY 2) ──
+        elif lidar_min < 0.28:
+            reward = -50.0  # Harsher penalty to avoid wall tunneling
             terminated = True
 
         # ── Anti-Spin / Anti-Stuck ──
-        # If 150 steps have passed and robot hasn't moved at least 1.5 meters towards goal
-        elif self.current_step > 150 and (self.start_dist - target_dist) < 1.5:
-            reward = -20.0  # Huge penalty for spinning/getting stuck
-            terminated = True
-
-        # ── Goal reached ──
-        elif target_dist < 0.6:
-            reward = 100.0  # Massive reward for winning
+        elif self.stagnation_counter > 50:
+            reward = -20.0  # Penalty for getting stuck or spinning in place
             terminated = True
 
         else:
@@ -188,17 +200,18 @@ class MazeEnv(gym.Env):
             progress = self.prev_dist - target_dist    # positive = getting closer
             reward   = progress * 10.0   # heavily incentivize moving forward
 
-            # BONUS: small reward for facing the goal
-            angle_to_goal = abs(float(self.state[1]))
-            if angle_to_goal < 0.5:
-                reward += 0.1
+            # BONUS: continuous reward for facing the goal
+            angle_to_goal = float(self.state[1])
+            reward += 0.1 * math.cos(angle_to_goal)
 
             # PENALTY: if front lidar is very close, discourage rushing into walls
             if lidar_front < 0.5:
                 reward -= 0.5
 
             # PENALTY: heavy time cost if spinning in place (linear speed ~0)
-            if linear < 0.1:
+            if linear < 0.1 and abs(angular) > 0.5:
+                reward -= 0.5
+            elif linear < 0.1:
                 reward -= 0.2
             else:
                 reward -= 0.01 # normal time cost
