@@ -204,7 +204,11 @@ def train():
     if checkpoint:
         print(f'\n✅ Found checkpoint: {checkpoint}')
         print('Loading and fine-tuning on maze environment...\n')
-        model = PPO.load(checkpoint, env=env)
+        custom_objects = {
+            "observation_space": env.observation_space,
+            "action_space": env.action_space
+        }
+        model = PPO.load(checkpoint, env=env, custom_objects=custom_objects)
         # Lower LR for fine-tuning — don't forget what was learned
         model.learning_rate = 1e-4
     else:
