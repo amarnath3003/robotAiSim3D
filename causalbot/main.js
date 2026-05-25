@@ -6,7 +6,7 @@ import { initUI } from './src/ui.js'
 import { initControls, getKeys } from './src/controls.js'
 import { getGridDebug } from './src/pathfinder.js'
 import { state } from './src/state.js'
-import { initRL, updateRL } from './src/rl.js'
+import { initRL, updateRL, flushRLState } from './src/rl.js'
 import { togglePerceptionMode } from './src/perception/perceptionMode.js'
 import { invalidateVisionCache } from './src/perception/visionSensor.js'
 import * as THREE from 'three'
@@ -37,7 +37,7 @@ function animate() {
   const delta = clock.getDelta()
   const keys = getKeys()
   const targetDelta = 1 / 60
-  const steps = state.controlMode === 'rl' ? 20 : 1 // 20x speedup for RL
+  const steps = state.controlMode === 'rl' ? 10 : 1 // 10x speedup for RL
 
   for (let i = 0; i < steps; i++) {
     updateRobot(targetDelta)
@@ -49,6 +49,8 @@ function animate() {
     
     applyRobotCollisions()
   }
+  
+  flushRLState() // Send state back to RL agent AFTER all physics substeps are done
   
   renderScene()
 }

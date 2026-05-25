@@ -148,6 +148,48 @@ export function castVision(facingAngle) {
   return perceived
 }
 
+/**
+ * Cast 11 lidar rays across 165 degrees and return raw distances.
+ * Used for RL / LLM direct observation.
+ */
+export function castLidar(facingAngle) {
+  const scene = state.scene.three
+  const distances = Array(11).fill(VISION_CONFIG.maxRange) // Default to max range
+  if (!scene) return distances
+
+  const rp = getRobotPos()
+  const eyePos = new THREE.Vector3(rp.x, rp.y + VISION_CONFIG.heightOffset, rp.z)
+  
+  const raycaster = new THREE.Raycaster()
+  raycaster.far = VISION_CONFIG.maxRange
+  raycaster.near = 0.05
+  
+  const fovRad = (165 * Math.PI) / 180
+  const halfFov = fovRad / 2
+  const step = fovRad / 10 // 11 rays means 10 intervals
+  
+  // Include ALL objects (even walls/floor) for raw lidar
+  const allMeshes = []
+  scene.traverse(child => {
+    if (child.isMesh && !child.name.toLowerCase().includes('robot')) {
+      allMeshes.push(child)
+    }
+  })
+  
+  for (let i = 0; i < 11; i++) {
+    const rayAngle = facingAngle - halfFov + step * i
+    const dir = new THREE.Vector3(Math.sin(rayAngle), 0, Math.cos(rayAngle))
+    raycaster.set(eyePos, dir)
+    
+    const intersects = raycaster.intersectObjects(allMeshes, false)
+    if (intersects.length > 0) {
+      distances[i] = parseFloat(intersects[0].distance.toFixed(2))
+    }
+  }
+  
+  return distances
+}
+
 // ─── Geometric helpers ────────────────────────────────────────────────────────
 
 /**

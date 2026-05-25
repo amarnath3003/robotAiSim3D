@@ -5,6 +5,7 @@ import websockets
 import asyncio
 import json
 import threading
+import time
 
 class CausalBotEnv(gym.Env):
     """
@@ -16,18 +17,18 @@ class CausalBotEnv(gym.Env):
     def __init__(self):
         super().__init__()
         
-        # Action space: continuous movement (dx, dz)
-        self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
+        # Action space: continuous movement [linear, angular]
+        # Linear: [0, 2.5], Angular: [-2.0, 2.0]
+        self.action_space = spaces.Box(
+            low=np.array([0.0, -2.0]), 
+            high=np.array([2.5, 2.0]), 
+            dtype=np.float32
+        )
         
-        # Observation space: 
-        # Robot (x, y, z, rot_y) -> 4
-        # Glass (x, y, z) -> 3
-        # Box (x, y, z) -> 3
-        # Ball (x, y, z) -> 3
-        # Total = 13
-        self.observation_space = spaces.Box(low=-10.0, high=10.0, shape=(13,), dtype=np.float32)
+        # Observation space: 11 lidar rays (distances)
+        self.observation_space = spaces.Box(low=0.0, high=10.0, shape=(11,), dtype=np.float32)
         
-        self.state = np.zeros(13, dtype=np.float32)
+        self.state = np.zeros(11, dtype=np.float32)
         self.websocket = None
         
         # Used to block gym step until JS sends the next state
@@ -48,7 +49,14 @@ class CausalBotEnv(gym.Env):
                 
         self.loop.run_until_complete(run_server())
 
-    async def _ws_handler(self, websocket, path):
+    async def _ws_handler(self, websocket):
+        if self.websocket is not None:
+            print("Warning: New JS client connected, closing old connection.")
+            try:
+                await self.websocket.close()
+            except:
+                pass
+                
         self.websocket = websocket
         print("CausalBot JS Client Connected!")
         try:
@@ -57,12 +65,12 @@ class CausalBotEnv(gym.Env):
                 
                 if data.get("type") == "state":
                     obs = data.get("observation", [])
-                    if len(obs) == 13:
+                    if len(obs) == 11:
                         self.state = np.array(obs, dtype=np.float32)
                         self._state_event.set()
                 elif data.get("type") == "reset_done":
                     obs = data.get("observation", [])
-                    if len(obs) == 13:
+                    if len(obs) == 11:
                         self.state = np.array(obs, dtype=np.float32)
                         self._reset_event.set()
                         
@@ -75,9 +83,8 @@ class CausalBotEnv(gym.Env):
         
         if self.websocket is None:
             print("Waiting for JS client to connect on ws://localhost:8765...")
-            # Wait for connection (simple busy wait for demo)
             while self.websocket is None:
-                pass
+                time.sleep(0.1) # Prevent CPU spinning
                 
         self._reset_event.clear()
         
@@ -106,20 +113,19 @@ class CausalBotEnv(gym.Env):
         # Wait for JS to reply with new state
         self._state_event.wait()
         
-        # Calculate Reward (Example: get close to the ball)
-        # state layout: [rx, ry, rz, rot_y, gx, gy, gz, bx, by, bz, ball_x, ball_y, ball_z]
-        rx, rz = self.state[0], self.state[2]
-        ball_x, ball_z = self.state[10], self.state[12]
+        # Calculate Reward (Explore without colliding)
+        # If any lidar ray is very close, penalize heavily
+        min_dist = np.min(self.state)
         
-        dist_to_ball = np.sqrt((rx - ball_x)**2 + (rz - ball_z)**2)
-        reward = -0.01  # Step penalty
-        
+        reward = 0.1 # Living/exploration reward
         terminated = False
         truncated = False
         
-        if dist_to_ball < 0.5:
-            reward += 10.0
+        if min_dist < 0.2: # Collision
+            reward = -10.0
             terminated = True
+        elif min_dist < 0.5: # Danger close
+            reward = -1.0
             
         return self.state, reward, terminated, truncated, {}
 
