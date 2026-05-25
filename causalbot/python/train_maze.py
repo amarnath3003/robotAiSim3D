@@ -42,10 +42,9 @@ class MazeEnv(gym.Env):
         high = np.array([70.0, np.pi] + [5.0] * 11, dtype=np.float32)  # dist up to 70m for massive maze
         self.observation_space = spaces.Box(low=low, high=high, dtype=np.float32)
 
-        # Action space: MINIMUM forward speed of 0.4 m/s — robot MUST move forward
-        # This eliminates the "spin in place / wait" local optima entirely
+        # Action space: Allow stopping [0.0], but we will penalize it to prevent endless spinning
         self.action_space = spaces.Box(
-            low=np.array([0.4, -2.0]),
+            low=np.array([0.0, -2.0]),
             high=np.array([2.5,  2.0]),
             dtype=np.float32
         )
@@ -53,6 +52,7 @@ class MazeEnv(gym.Env):
         self.state        = np.zeros(13, dtype=np.float32)
         self.target_goal  = np.array([0.0, 0.0])
         self.prev_dist    = 0.0   # track progress each step
+        self.start_dist   = 0.0   # track total progress to detect spinning
         self.max_steps    = 3000  # shorter episodes = faster learning signal
         self.current_step = 0
         self.websocket    = None
@@ -139,6 +139,7 @@ class MazeEnv(gym.Env):
 
         self._reset_event.wait(timeout=10)
         self.prev_dist    = float(self.state[0])   # record start distance
+        self.start_dist   = float(self.state[0])
         self.current_step = 0
         return self.state, {}
 
@@ -146,8 +147,8 @@ class MazeEnv(gym.Env):
         if self.websocket is None:
             return self.state, -1.0, True, False, {}
 
-        # Enforce minimum forward speed — clamp to action space bounds
-        linear  = float(np.clip(action[0], 0.4, 2.5))
+        # Allow stopping to turn safely
+        linear  = float(np.clip(action[0], 0.0, 2.5))
         angular = float(np.clip(action[1], -2.0, 2.0))
 
         self._state_event.clear()
@@ -166,32 +167,41 @@ class MazeEnv(gym.Env):
         terminated = False
         truncated  = False
 
-        # ── Collision: any ray dangerously close ──
-        if lidar_min < 0.18:
+        # ── Collision: any ray dangerously close (robot radius is 0.25m) ──
+        if lidar_min < 0.28:
             reward = -15.0
+            terminated = True
+
+        # ── Anti-Spin / Anti-Stuck ──
+        # If 150 steps have passed and robot hasn't moved at least 1.5 meters towards goal
+        elif self.current_step > 150 and (self.start_dist - target_dist) < 1.5:
+            reward = -20.0  # Huge penalty for spinning/getting stuck
             terminated = True
 
         # ── Goal reached ──
         elif target_dist < 0.6:
-            reward = 50.0
+            reward = 100.0  # Massive reward for winning
             terminated = True
 
         else:
             # PRIMARY: reward actual progress toward goal this step
             progress = self.prev_dist - target_dist    # positive = getting closer
-            reward   = progress * 3.0
+            reward   = progress * 10.0   # heavily incentivize moving forward
 
-            # BONUS: small reward for facing the goal (reduces aimless spinning)
+            # BONUS: small reward for facing the goal
             angle_to_goal = abs(float(self.state[1]))
-            if angle_to_goal < 0.5:                    # within ~30 deg of goal
-                reward += 0.05
+            if angle_to_goal < 0.5:
+                reward += 0.1
 
             # PENALTY: if front lidar is very close, discourage rushing into walls
-            if lidar_front < 0.35:
+            if lidar_front < 0.5:
                 reward -= 0.5
 
-            # PENALTY: flat time cost to discourage dawdling
-            reward -= 0.02
+            # PENALTY: heavy time cost if spinning in place (linear speed ~0)
+            if linear < 0.1:
+                reward -= 0.2
+            else:
+                reward -= 0.01 # normal time cost
 
         self.prev_dist = target_dist
 
