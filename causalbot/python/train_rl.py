@@ -31,9 +31,9 @@ def train():
     
     print("Starting Training! Open the browser and watch the robot train.")
     
-    # Train for a small number of timesteps to start with
-    # In a real scenario, this would be 100,000 to 1,000,000 steps
-    model.learn(total_timesteps=50000, callback=checkpoint_callback)
+    # Train for a longer time for better obstacle avoidance
+    # (500,000 steps usually takes ~1-2 hours depending on speed)
+    model.learn(total_timesteps=500000, callback=checkpoint_callback)
     
     print("Training finished. Saving final model...")
     model.save("models/causalbot_ppo_final")
