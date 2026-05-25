@@ -42,15 +42,18 @@ class MazeEnv(gym.Env):
         high = np.array([70.0, np.pi] + [5.0] * 11, dtype=np.float32)  # dist up to 70m for massive maze
         self.observation_space = spaces.Box(low=low, high=high, dtype=np.float32)
 
+        # Action space: MINIMUM forward speed of 0.4 m/s — robot MUST move forward
+        # This eliminates the "spin in place / wait" local optima entirely
         self.action_space = spaces.Box(
-            low=np.array([0.0, -2.0]),
+            low=np.array([0.4, -2.0]),
             high=np.array([2.5,  2.0]),
             dtype=np.float32
         )
 
         self.state        = np.zeros(13, dtype=np.float32)
         self.target_goal  = np.array([0.0, 0.0])
-        self.max_steps    = 8000   # much longer episodes for massive 51x51 maze
+        self.prev_dist    = 0.0   # track progress each step
+        self.max_steps    = 3000  # shorter episodes = faster learning signal
         self.current_step = 0
         self.websocket    = None
         self.latest_prompt = None
@@ -135,13 +138,16 @@ class MazeEnv(gym.Env):
         ).result(timeout=5)
 
         self._reset_event.wait(timeout=10)
+        self.prev_dist    = float(self.state[0])   # record start distance
+        self.current_step = 0
         return self.state, {}
 
     def step(self, action):
         if self.websocket is None:
             return self.state, -1.0, True, False, {}
 
-        linear  = float(np.clip(action[0], 0.0, 2.5))
+        # Enforce minimum forward speed — clamp to action space bounds
+        linear  = float(np.clip(action[0], 0.4, 2.5))
         angular = float(np.clip(action[1], -2.0, 2.0))
 
         self._state_event.clear()
@@ -152,22 +158,42 @@ class MazeEnv(gym.Env):
 
         self._state_event.wait(timeout=5)
 
-        target_dist = self.state[0]
-        lidar_min   = float(np.min(self.state[2:]))
+        target_dist = float(self.state[0])
+        lidar_min   = float(np.min(self.state[2:]))   # closest obstacle
+        lidar_front = float(self.state[7])             # center-front ray
         self.current_step += 1
 
-        reward     = -0.01                              # time cost
         terminated = False
         truncated  = False
 
-        if lidar_min < 0.2:                            # collision
-            reward = -10.0
+        # ── Collision: any ray dangerously close ──
+        if lidar_min < 0.18:
+            reward = -15.0
             terminated = True
-        elif target_dist < 0.5:                        # goal reached!
-            reward = 25.0
+
+        # ── Goal reached ──
+        elif target_dist < 0.6:
+            reward = 50.0
             terminated = True
+
         else:
-            reward += 0.15 / (target_dist + 0.15)     # dense proximity reward
+            # PRIMARY: reward actual progress toward goal this step
+            progress = self.prev_dist - target_dist    # positive = getting closer
+            reward   = progress * 3.0
+
+            # BONUS: small reward for facing the goal (reduces aimless spinning)
+            angle_to_goal = abs(float(self.state[1]))
+            if angle_to_goal < 0.5:                    # within ~30 deg of goal
+                reward += 0.05
+
+            # PENALTY: if front lidar is very close, discourage rushing into walls
+            if lidar_front < 0.35:
+                reward -= 0.5
+
+            # PENALTY: flat time cost to discourage dawdling
+            reward -= 0.02
+
+        self.prev_dist = target_dist
 
         if self.current_step >= self.max_steps:
             truncated = True
@@ -217,7 +243,15 @@ def train():
             'MlpPolicy', env, verbose=1,
             tensorboard_log='./tensorboard_logs/',
             learning_rate=3e-4,
-            n_steps=2048, batch_size=64, n_epochs=10, gamma=0.99
+            n_steps=1024,
+            batch_size=128,
+            n_epochs=8,
+            gamma=0.995,
+            gae_lambda=0.95,
+            ent_coef=0.05,     # high entropy → more random exploration early on
+            clip_range=0.2,
+            vf_coef=0.5,
+            normalize_advantage=True,
         )
 
     checkpoint_callback = CheckpointCallback(
