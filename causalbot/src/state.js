@@ -17,7 +17,7 @@ export const state = {
     status: 'idle',
   },
 
-  controlMode: 'ai', // 'ai' | 'debug'
+  controlMode: 'rl', // 'ai' | 'debug' | 'rl'
 
   perceptionMode: 'omniscient', // 'omniscient' | 'vision'
 

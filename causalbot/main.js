@@ -6,6 +6,7 @@ import { initUI } from './src/ui.js'
 import { initControls, getKeys } from './src/controls.js'
 import { getGridDebug } from './src/pathfinder.js'
 import { state } from './src/state.js'
+import { initRL, updateRL } from './src/rl.js'
 import { togglePerceptionMode } from './src/perception/perceptionMode.js'
 import { invalidateVisionCache } from './src/perception/visionSensor.js'
 import * as THREE from 'three'
@@ -24,6 +25,7 @@ async function init() {
   initSkillRegistry()
   initControls()
   initUI()
+  initRL()
   // After all meshes are added to the scene, build the vision raycast cache
   invalidateVisionCache()
   console.log('All systems ready.')
@@ -34,14 +36,19 @@ function animate() {
   requestAnimationFrame(animate)
   const delta = clock.getDelta()
   const keys = getKeys()
+  const targetDelta = 1 / 60
+  const steps = state.controlMode === 'rl' ? 20 : 1 // 20x speedup for RL
 
-  updateRobot(delta)
-  updateDebugRobot(delta)
+  for (let i = 0; i < steps; i++) {
+    updateRobot(targetDelta)
+    updateDebugRobot(targetDelta)
 
-  stepPhysics(delta)
-  stepDebugRobotPhysics(keys, delta)
-  
-  applyRobotCollisions()
+    stepPhysics(targetDelta)
+    stepDebugRobotPhysics(keys, targetDelta)
+    updateRL(targetDelta)
+    
+    applyRobotCollisions()
+  }
   
   renderScene()
 }
