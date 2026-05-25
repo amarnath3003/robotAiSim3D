@@ -10,7 +10,7 @@ import { state } from './state.js'
 const loader = new GLTFLoader()
 const rgbeLoader = new RGBELoader()
 
-export async function initScene() {
+export async function initScene(mazeMode = false) {
   const renderer = new THREE.WebGLRenderer({ antialias: true })
   renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -29,7 +29,7 @@ export async function initScene() {
   scene.background = hdri
 
   const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 100)
-  camera.position.set(0, 5, 7)
+  camera.position.set(0, 8, 10)
   camera.lookAt(0, 0, 0)
 
   const controls = new OrbitControls(camera, renderer.domElement)
@@ -38,7 +38,7 @@ export async function initScene() {
   controls.dampingFactor = 0.07
   controls.maxPolarAngle = Math.PI / 2.05
   controls.minDistance = 2
-  controls.maxDistance = 15
+  controls.maxDistance = 30
   controls.update()
 
   scene.add(new THREE.AmbientLight(0xffffff, 0.5))
@@ -47,20 +47,27 @@ export async function initScene() {
   fillLight.position.set(-3, 4, -3)
   scene.add(fillLight)
 
-  // Load environment
-  const env = await loader.loadAsync('/environment2.glb')
-  env.scene.traverse(c => {
-    if (c.isMesh) {
-      c.castShadow = true
-      c.receiveShadow = true
-      
-      // Hide table for now
-      if (c.name.toLowerCase().includes('table')) {
-        c.visible = false
+  if (mazeMode) {
+    // Large floor for the maze (no walls — maze.js adds them)
+    const floorGeo = new THREE.PlaneGeometry(30, 30)
+    floorGeo.rotateX(-Math.PI / 2)
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.95, metalness: 0.0 })
+    const floor = new THREE.Mesh(floorGeo, floorMat)
+    floor.receiveShadow = true
+    floor.name = 'mazeFloor'
+    scene.add(floor)
+  } else {
+    // Load room environment
+    const env = await loader.loadAsync('/environment2.glb')
+    env.scene.traverse(c => {
+      if (c.isMesh) {
+        c.castShadow = true
+        c.receiveShadow = true
+        if (c.name.toLowerCase().includes('table')) c.visible = false
       }
-    }
-  })
-  scene.add(env.scene)
+    })
+    scene.add(env.scene)
+  }
 
   const composer = new EffectComposer(renderer)
   composer.addPass(new RenderPass(scene, camera))

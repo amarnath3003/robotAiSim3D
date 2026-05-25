@@ -1,6 +1,6 @@
 import { initScene, renderScene } from './src/scene.js'
 import { initRobot, initDebugRobot, updateRobot, updateDebugRobot } from './src/robot.js'
-import { initPhysics, stepPhysics, applyRobotCollisions, stepDebugRobotPhysics } from './src/physics.js'
+import { initPhysics, stepPhysics, applyRobotCollisions, stepDebugRobotPhysics, addMazeWalls } from './src/physics.js'
 import { initSkillRegistry } from './src/skillRegistry.js'
 import { initUI } from './src/ui.js'
 import { initControls, getKeys } from './src/controls.js'
@@ -9,24 +9,50 @@ import { state } from './src/state.js'
 import { initRL, updateRL, flushRLState } from './src/rl.js'
 import { togglePerceptionMode } from './src/perception/perceptionMode.js'
 import { invalidateVisionCache } from './src/perception/visionSensor.js'
+import { initMaze, updateMaze, getGoalPosition, getStartPosition } from './src/maze.js'
 import * as THREE from 'three'
 
 window.__togglePerception = togglePerceptionMode
 
+// ─── Maze mode: activated via ?mode=maze in URL ───────────────────────────────
+const MAZE_MODE = new URLSearchParams(window.location.search).get('mode') === 'maze'
+window.MAZE_MODE = MAZE_MODE
+window.getMazeGoal  = () => MAZE_MODE ? getGoalPosition()  : null
+window.getMazeStart = () => MAZE_MODE ? getStartPosition() : null
+
 const clock = new THREE.Clock()
 
 async function init() {
-  console.log('Booting CausalBot...')
-  await initScene()
+  console.log(`Booting CausalBot... [${MAZE_MODE ? 'MAZE MODE' : 'ROOM MODE'}]`)
+  await initScene(MAZE_MODE)
   await initRobot()
   await initDebugRobot()
   await initPhysics()
-  // visualiseGrid() // uncomment to see obstacle grid
+
+  if (MAZE_MODE) {
+    console.log('[Main] Generating maze...')
+    const wallSpecs = initMaze(state.scene.three)
+    addMazeWalls(wallSpecs)
+    console.log(`[Main] Maze ready — ${wallSpecs.length} wall colliders added`)
+
+    // Override robot start position to maze center
+    const start = getStartPosition()
+    if (state.robot._body) {
+      state.robot._body.setNextKinematicTranslation({ x: start.x, y: 0.35, z: start.z })
+    }
+    state.robot.position = [start.x, 0.35, start.z]
+
+    // Show maze goal on HUD
+    const goal = getGoalPosition()
+    console.log(`[Main] Goal at (${goal.x.toFixed(2)}, ${goal.z.toFixed(2)})`)
+  }
+
   initSkillRegistry()
   initControls()
   initUI()
   initRL()
-  // After all meshes are added to the scene, build the vision raycast cache
+
+  // After all meshes are in scene, build vision raycast cache
   invalidateVisionCache()
   console.log('All systems ready.')
   animate()
@@ -37,24 +63,24 @@ function animate() {
   const delta = clock.getDelta()
   const keys = getKeys()
   const targetDelta = 1 / 60
-  const steps = state.controlMode === 'rl' ? 10 : 1 // 10x speedup for RL
+  const steps = state.controlMode === 'rl' ? 10 : 1
 
   for (let i = 0; i < steps; i++) {
     updateRobot(targetDelta)
     updateDebugRobot(targetDelta)
-
     stepPhysics(targetDelta)
     stepDebugRobotPhysics(keys, targetDelta)
     updateRL(targetDelta)
-    
     applyRobotCollisions()
   }
-  
-  flushRLState() // Send state back to RL agent AFTER all physics substeps are done
-  
+
+  flushRLState()
+
+  if (MAZE_MODE) updateMaze(delta)
+
   renderScene()
 }
- 
+
 // Optional: visualise pathfinding grid in Three.js (dev only)
 function visualiseGrid() {
   const { grid, cols, rows, cellSize, halfExtent } = getGridDebug()

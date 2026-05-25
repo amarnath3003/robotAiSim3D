@@ -7,7 +7,10 @@ const LIDAR_RAYS   = 11
 const LIDAR_FOV    = 165 * (Math.PI / 180) // radians
 const LIDAR_RANGE  = 5.0
 const LIDAR_HEIGHT = 0.45  // eye height above base
-const ROOM_BOUNDS  = { minX: -2.8, maxX: 2.8, minZ: -2.8, maxZ: 2.8 }
+// Bounds are big enough for either room or 17×17 maze (~8m radius)
+const ROOM_BOUNDS  = window.MAZE_MODE
+  ? { minX: -9, maxX: 9, minZ: -9, maxZ: 9 }
+  : { minX: -2.8, maxX: 2.8, minZ: -2.8, maxZ: 2.8 }
 const MAX_LINEAR   = 2.5   // m/s forward
 const MAX_ANGULAR  = 2.0   // rad/s turning
 
@@ -26,6 +29,17 @@ export function initRL() {
   ws.onopen = () => {
     console.log('[RL] Connected to Gymnasium Server')
     _lidarMeshCache = null // invalidate on reconnect
+
+    // In maze mode, tell Python where the goal is
+    if (window.MAZE_MODE && window.getMazeGoal) {
+      const goal = window.getMazeGoal()
+      if (goal) {
+        setTimeout(() => { // small delay so Python handler is ready
+          ws.send(JSON.stringify({ type: 'maze_goal', x: goal.x, z: goal.z }))
+          console.log(`[RL] Sent maze_goal to Python: (${goal.x.toFixed(2)}, ${goal.z.toFixed(2)})`)
+        }, 500)
+      }
+    }
   }
 
   ws.onmessage = (event) => {

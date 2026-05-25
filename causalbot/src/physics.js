@@ -153,6 +153,29 @@ export async function initPhysics() {
   console.log('[Physics] Engine ready — game-quality simulation active')
 }
 
+// ─── Maze integration ────────────────────────────────────────────────────────
+export function getRapierWorld() { return world }
+
+/**
+ * Add a batch of static wall colliders for the maze.
+ * walls: Array of { x, y, z, hw, hh, hd } (half-extents)
+ */
+export function addMazeWalls(walls) {
+  if (!world) return
+  for (const w of walls) {
+    const body = world.createRigidBody(
+      RAPIER.RigidBodyDesc.fixed().setTranslation(w.x, w.y, w.z)
+    )
+    world.createCollider(
+      RAPIER.ColliderDesc.cuboid(w.hw, w.hh, w.hd)
+        .setFriction(0.5)
+        .setRestitution(0.1),
+      body
+    )
+  }
+  console.log(`[Physics] Added ${walls.length} maze wall colliders`)
+}
+
 // ─── Setup a dynamic scene object ────────────────────────────────────────────
 function setupObject(id, cfg) {
   const obj = state.world.objects[id]
