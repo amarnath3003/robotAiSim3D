@@ -59,6 +59,13 @@ export function initRL() {
   ws.onerror = (e) => console.error('[RL] WebSocket error:', e)
 }
 
+// ─── Prompt dispatch ─────────────────────────────────────────────────────────
+export function sendPromptRL(text) {
+  if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'prompt', text }))
+  }
+}
+
 // ─── Reset handler ────────────────────────────────────────────────────────────
 function _handleReset() {
   // Teleport the AI robot back to start
@@ -79,8 +86,15 @@ function _handleReset() {
   _pendingAction = null
 
   if (ws?.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: 'reset_done', observation: castLidar() }))
+    ws.send(JSON.stringify({ type: 'reset_done', observation: getObservation() }))
   }
+}
+
+function getObservation() {
+  const rx = state.robot.position[0]
+  const rz = state.robot.position[2]
+  const heading = state.robot.rotation || 0
+  return [rx, rz, heading, ...castLidar()]
 }
 
 // ─── Physics update (called every substep in main.js) ─────────────────────────
@@ -121,7 +135,7 @@ export function flushRLState() {
 
   _pendingAction = null
   _stepReady = false
-  ws.send(JSON.stringify({ type: 'state', observation: castLidar() }))
+  ws.send(JSON.stringify({ type: 'state', observation: getObservation() }))
 }
 
 // ─── Lidar sensor ─────────────────────────────────────────────────────────────

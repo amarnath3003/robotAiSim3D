@@ -2,3 +2,7 @@ gymnasium>=0.29.0
 numpy
 websockets
 asyncio
+python-dotenv
+requests
+stable-baselines3[extra]
+torch

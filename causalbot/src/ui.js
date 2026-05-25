@@ -12,8 +12,18 @@ export function initUI() {
 
     input.value = ''
     input.disabled = true
-    await handleInstruction(text)
-    input.disabled = false
+    
+    if (state.controlMode === 'rl') {
+      import('./rl.js').then(module => {
+        module.sendPromptRL(text)
+        input.disabled = false
+        input.focus()
+      })
+    } else {
+      await handleInstruction(text)
+      input.disabled = false
+      input.focus()
+    }
     input.focus()
   })
 
