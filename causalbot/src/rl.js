@@ -411,6 +411,7 @@ if(!_obj){context.setStatus('❌ Target not found: ${targetId}');return;}
 let _success=false;
 let _prevDist=Infinity;
 let _stuckCount=0;
+let _totalStuck=0;
 
 for(let step=0;step<80;step++){
   const rp=context.getPos();
@@ -473,6 +474,32 @@ for(let step=0;step<80;step++){
   }
   
   if(_stuckCount>2){
+    _totalStuck++;
+    if (_totalStuck > 3) {
+      context.setStatus('⚠️ RL Policy completely stuck! Falling back to direct pathfinding...');
+      const angle = Math.atan2(ox-rp.x, oz-rp.z);
+      const tx = ox - Math.sin(angle) * (_GR * 0.8);
+      const tz = oz - Math.cos(angle) * (_GR * 0.8);
+      await context.navigateTo(tx, rp.y, tz, 2.0);
+      
+      if (_isPickUp) {
+        await context.wait(100);
+        const grabbed = context.grab('${targetId}');
+        if (grabbed) {
+           _success = true;
+           context.setEye(0x00ff88);
+           context.setStatus('✅ Recovered and grabbed via fallback.');
+        } else {
+           context.setStatus('❌ Fallback failed to reach object.');
+        }
+      } else {
+        _success = true;
+        context.setEye(0x00ff88);
+        context.setStatus('✅ Arrived via fallback.');
+      }
+      break;
+    }
+    
     context.setStatus('⚠️ RL Policy stuck, attempting escape maneuver...');
     // Escape: pick a random direction away from current stuck position
     const escapeAngle = Math.random() * Math.PI * 2;
