@@ -204,6 +204,8 @@ export function navigateTo(tx, ty, tz, onArrived, speed = 2.5, excludeIds = null
 
   let wpIndex = 0
   let cancelled = false
+  let stuckFrames = 0
+  let lastDist = Infinity
 
   const clearPath = () => {
     if (currentPathLine.parent) {
@@ -220,7 +222,7 @@ export function navigateTo(tx, ty, tz, onArrived, speed = 2.5, excludeIds = null
       clearInterval(interval)
       clearPath()
       setAgentStatus(null)
-      onArrived?.()
+      onArrived?.(true) // true = reached end
       return
     }
 
@@ -233,8 +235,25 @@ export function navigateTo(tx, ty, tz, onArrived, speed = 2.5, excludeIds = null
 
     if (dist < 0.1) {
       wpIndex++
+      stuckFrames = 0
+      lastDist = Infinity
       return
     }
+
+    // Stuck detection: if distance barely changed for 30 frames (0.5s), skip waypoint
+    if (Math.abs(lastDist - dist) < 0.005) {
+      stuckFrames++
+      if (stuckFrames > 30) {
+        console.warn('Robot stuck navigating, skipping waypoint', wpIndex)
+        wpIndex++
+        stuckFrames = 0
+        lastDist = Infinity
+        return
+      }
+    } else {
+      stuckFrames = 0
+    }
+    lastDist = dist
 
     const step = Math.min(speed * 0.016, dist)
     const n    = step / dist

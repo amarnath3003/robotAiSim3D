@@ -422,8 +422,11 @@ for(let step=0;step<80;step++){
   // Check if close enough to grab/arrive
   if(dist<=_GR*1.2){
     if(_isPickUp){
-      // Navigate precisely to object then grab
-      await context.navigateTo(ox, rp.y, oz, 2.0);
+      // Navigate to a point just outside the object to avoid ramming it
+      const aAngle = Math.atan2(ox-rp.x, oz-rp.z);
+      const tx = ox - Math.sin(aAngle) * (_GR * 0.6);
+      const tz = oz - Math.cos(aAngle) * (_GR * 0.6);
+      await context.navigateTo(tx, rp.y, tz, 2.0);
       await context.wait(100);
       const grabbed=context.grab('${targetId}');
       if(grabbed){
@@ -431,6 +434,10 @@ for(let step=0;step<80;step++){
         context.setStatus('✅ ${task.name} — success!');
         _success=true;
         break;
+      } else {
+        context.setStatus('⚠️ Could not grab (too far?)');
+        // Back up slightly and retry next loop
+        await context.navigateTo(rp.x - Math.sin(aAngle)*0.5, rp.y, rp.z - Math.cos(aAngle)*0.5, 2.0);
       }
     } else {
       context.setEye(0x00ff88);
@@ -469,8 +476,9 @@ for(let step=0;step<80;step++){
   const moved=Math.hypot(newRp.x-rp.x, newRp.z-rp.z);
   if(moved<0.05){ _stuckCount++; }else{ _stuckCount=0; }
   if(_stuckCount>3){
-    // Escape: navigate directly to object
-    await context.navigateTo(ox, rp.y, oz, 2.5);
+    // Escape: navigate towards object but don't ram it
+    const escapeAngle = Math.atan2(ox-newRp.x, oz-newRp.z);
+    await context.navigateTo(ox - Math.sin(escapeAngle)*(_GR*0.8), rp.y, oz - Math.cos(escapeAngle)*(_GR*0.8), 2.5);
     _stuckCount=0;
   }
   
