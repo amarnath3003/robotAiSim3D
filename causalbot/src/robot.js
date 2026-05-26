@@ -245,6 +245,14 @@ export function navigateTo(tx, ty, tz, onArrived, speed = 2.5, excludeIds = null
       stuckFrames++
       if (stuckFrames > 30) {
         console.warn('Robot stuck navigating, skipping waypoint', wpIndex)
+        // If this is the final waypoint and we are stuck, navigation failed
+        if (wpIndex === waypoints.length - 1) {
+          clearInterval(interval)
+          clearPath()
+          setAgentStatus(null)
+          onArrived?.(false)
+          return
+        }
         wpIndex++
         stuckFrames = 0
         lastDist = Infinity
@@ -260,7 +268,7 @@ export function navigateTo(tx, ty, tz, onArrived, speed = 2.5, excludeIds = null
     setRobotPos(p.x + dx * n, p.y + dy * n, p.z + dz * n)
   }, 16)
 
-  return () => { cancelled = true; clearInterval(interval); clearPath() }
+  return () => { cancelled = true; clearInterval(interval); clearPath(); onArrived?.(false) }
 }
 
 // Instant teleport (for jumps/special moves)

@@ -29,6 +29,16 @@ function buildContext(instruction) {
     grab: (objectId) => {
       const obj = getObject(objectId)
       if (!obj || !obj.snapable) return false
+
+      // Enforce physical proximity
+      const rp = getRobotPos()
+      const op = obj.position
+      const dist = Math.sqrt((rp.x - op[0])**2 + (rp.y - op[1])**2 + (rp.z - op[2])**2)
+      if (dist > 1.2) {
+        console.warn(`[Executor] Grab failed: object too far (${dist.toFixed(2)}m)`)
+        return false
+      }
+
       if (obj._body) obj._body.setBodyType(0)
       obj.status            = 'held'
       state.robot.heldObject = obj.id

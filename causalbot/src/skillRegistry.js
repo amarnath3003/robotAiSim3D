@@ -1,68 +1,144 @@
 import { state } from './state.js'
 
+function makeSkill(name, code) {
+  return {
+    name,
+    code: code.trim().replace(/\s+/g, ' '),
+    fn: (context) => {
+      const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor
+      return new AsyncFunction('context', code)(context)
+    }
+  }
+}
+
 // Built-in permanent skills that always exist
 const BUILTIN_SKILLS = {
-  jump: {
-    name: 'jump',
-    code: `const p = context.getPos(); context.setPos(p.x, p.y + 0.8, p.z); await context.wait(400); context.setPos(p.x, p.y, p.z); context.setStatus('Jumped!');`,
-    fn: (context) => { const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor; return new AsyncFunction('context', `const p = context.getPos(); context.setPos(p.x, p.y + 0.8, p.z); await context.wait(400); context.setPos(p.x, p.y, p.z); context.setStatus('Jumped!');`)(context) }
-  },
-  go_to: {
-    name: 'go_to',
-    code: `const tgt = context.target || context.getObject(context.args?.target); if (!tgt) { context.setStatus('Cannot find target: ' + (context.args?.target || '?')); return; } await context.navigateTo(tgt.position[0], 1.2, tgt.position[2]); context.setStatus('Arrived at ' + (tgt.name || tgt.id) + '!');`,
-    fn: (ctx) => { const F = Object.getPrototypeOf(async function(){}).constructor; return new F('context', `const tgt = context.target || context.getObject(context.args?.target); if (!tgt) { context.setStatus('Cannot find target: ' + (context.args?.target || '?')); return; } await context.navigateTo(tgt.position[0], 1.2, tgt.position[2]); context.setStatus('Arrived at ' + (tgt.name || tgt.id) + '!');`)(ctx) }
-  },
-  go_to_object: {
-    name: 'go_to_object',
-    code: `const tgt = context.target || context.getObject(context.args?.target); if (!tgt) { context.setStatus('Cannot find target: ' + (context.args?.target || '?')); return; } await context.navigateTo(tgt.position[0], 1.2, tgt.position[2]); context.setStatus('Arrived at ' + (tgt.name || tgt.id) + '!');`,
-    fn: (ctx) => { const F = Object.getPrototypeOf(async function(){}).constructor; return new F('context', `const tgt = context.target || context.getObject(context.args?.target); if (!tgt) { context.setStatus('Cannot find target: ' + (context.args?.target || '?')); return; } await context.navigateTo(tgt.position[0], 1.2, tgt.position[2]); context.setStatus('Arrived at ' + (tgt.name || tgt.id) + '!');`)(ctx) }
-  },
-  pick_up: {
-    name: 'pick_up',
-    code: `if (!context.target) { context.setStatus('No target'); return; } const tp = context.target.position; const rp = context.getPos(); const dx = rp.x - tp[0]; const dz = rp.z - tp[2]; const dist = Math.sqrt(dx*dx+dz*dz) || 1; await context.navigateTo(tp[0] + (dx/dist)*0.25, 1.2, tp[2] + (dz/dist)*0.25); context.setArm(-1.2); await context.wait(300); context.grab(context.target.id); context.setArm(0); context.setStatus('Picked up!');`,
-    fn: (ctx) => { const F = Object.getPrototypeOf(async function(){}).constructor; return new F('context', `if (!context.target) { context.setStatus('No target'); return; } const tp = context.target.position; const rp = context.getPos(); const dx = rp.x - tp[0]; const dz = rp.z - tp[2]; const dist = Math.sqrt(dx*dx+dz*dz) || 1; await context.navigateTo(tp[0] + (dx/dist)*0.25, 1.2, tp[2] + (dz/dist)*0.25); context.setArm(-1.2); await context.wait(300); context.grab(context.target.id); context.setArm(0); context.setStatus('Picked up!');`)(ctx) }
-  },
-  pick_up_object: {
-    name: 'pick_up_object',
-    code: `if (!context.target) { context.setStatus('No target'); return; } const tp = context.target.position; const rp = context.getPos(); const dx = rp.x - tp[0]; const dz = rp.z - tp[2]; const dist = Math.sqrt(dx*dx+dz*dz) || 1; await context.navigateTo(tp[0] + (dx/dist)*0.25, 1.2, tp[2] + (dz/dist)*0.25); context.setArm(-1.2); await context.wait(300); context.grab(context.target.id); context.setArm(0); context.setStatus('Picked up!');`,
-    fn: (ctx) => { const F = Object.getPrototypeOf(async function(){}).constructor; return new F('context', `if (!context.target) { context.setStatus('No target'); return; } const tp = context.target.position; const rp = context.getPos(); const dx = rp.x - tp[0]; const dz = rp.z - tp[2]; const dist = Math.sqrt(dx*dx+dz*dz) || 1; await context.navigateTo(tp[0] + (dx/dist)*0.25, 1.2, tp[2] + (dz/dist)*0.25); context.setArm(-1.2); await context.wait(300); context.grab(context.target.id); context.setArm(0); context.setStatus('Picked up!');`)(ctx) }
-  },
-  release: {
-    name: 'release',
-    code: `context.release(); context.setArm(0); context.setStatus('Released!');`,
-    fn: (context) => { const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor; return new AsyncFunction('context', `context.release(); context.setArm(0); context.setStatus('Released!');`)(context) }
-  },
-  spin: {
-    name: 'spin',
-    code: `const p = context.getPos(); for (let i = 0; i <= 8; i++) { const a = (i/8)*Math.PI*2; context.setPos(p.x + Math.cos(a)*0.3, p.y, p.z + Math.sin(a)*0.3); await context.wait(80); } context.setPos(p.x, p.y, p.z); context.setStatus('Spun!');`,
-    fn: (context) => { const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor; return new AsyncFunction('context', `const p = context.getPos(); for (let i = 0; i <= 8; i++) { const a = (i/8)*Math.PI*2; context.setPos(p.x + Math.cos(a)*0.3, p.y, p.z + Math.sin(a)*0.3); await context.wait(80); } context.setPos(p.x, p.y, p.z); context.setStatus('Spun!');`)(context) }
-  },
-  patrol: {
-    name: 'patrol',
-    code: `const corners = [[-2,1.2,-2],[-2,1.2,2],[2,1.2,2],[2,1.2,-2]]; for (const c of corners) { await context.navigateTo(c[0],c[1],c[2]); await context.wait(200); } context.setStatus('Patrol done!');`,
-    fn: (context) => { const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor; return new AsyncFunction('context', `const corners = [[-2,1.2,-2],[-2,1.2,2],[2,1.2,2],[2,1.2,-2]]; for (const c of corners) { await context.navigateTo(c[0],c[1],c[2]); await context.wait(200); } context.setStatus('Patrol done!');`)(context) }
-  },
-  fly: {
-    name: 'fly',
-    code: `const p = context.getPos(); context.setPos(p.x, p.y + 1.5, p.z); await context.wait(1000); context.setPos(p.x, 1.2, p.z); context.setStatus('Landed!');`,
-    fn: (context) => { const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor; return new AsyncFunction('context', `const p = context.getPos(); context.setPos(p.x, p.y + 1.5, p.z); await context.wait(1000); context.setPos(p.x, 1.2, p.z); context.setStatus('Landed!');`)(context) }
-  },
-  dance: {
-    name: 'dance',
-    code: `for (let i = 0; i < 4; i++) { const p = context.getPos(); context.setPos(p.x+0.3, p.y+0.3, p.z); await context.wait(150); context.setPos(p.x-0.3, p.y, p.z); await context.wait(150); context.setPos(p.x, p.y, p.z); await context.wait(150); } context.setStatus('Danced!');`,
-    fn: (context) => { const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor; return new AsyncFunction('context', `for (let i = 0; i < 4; i++) { const p = context.getPos(); context.setPos(p.x+0.3, p.y+0.3, p.z); await context.wait(150); context.setPos(p.x-0.3, p.y, p.z); await context.wait(150); context.setPos(p.x, p.y, p.z); await context.wait(150); } context.setStatus('Danced!');`)(context) }
-  },
-  scanforobject: {
-    name: 'scanForObject',
-    code: `const tgt = context.args?.target; if (!tgt) { context.setStatus('No target to scan for.'); return; } if (context.scanForObject) { const found = await context.scanForObject(tgt); if (found) context.setStatus('Found ' + found.name + '!'); else context.setStatus('Could not find ' + tgt + '.'); } else { context.setStatus('Scan unavailable.'); }`,
-    fn: (context) => { const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor; return new AsyncFunction('context', `const tgt = context.args?.target; if (!tgt) { context.setStatus('No target to scan for.'); return; } if (context.scanForObject) { const found = await context.scanForObject(tgt); if (found) context.setStatus('Found ' + found.name + '!'); else context.setStatus('Could not find ' + tgt + '.'); } else { context.setStatus('Scan unavailable.'); }`)(context) }
-  },
-  scan_room: {
-    name: 'scan_room',
-    code: `if (context.fullScan) { const found = await context.fullScan(); context.setStatus('Scan complete. Found ' + found.length + ' objects.'); } else { context.setStatus('Scan unavailable.'); }`,
-    fn: (context) => { const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor; return new AsyncFunction('context', `if (context.fullScan) { const found = await context.fullScan(); context.setStatus('Scan complete. Found ' + found.length + ' objects.'); } else { context.setStatus('Scan unavailable.'); }`)(context) }
-  },
+  jump: makeSkill('jump', `
+    const p = context.getPos();
+    context.setPos(p.x, p.y + 0.8, p.z);
+    await context.wait(400);
+    context.setPos(p.x, p.y, p.z);
+    context.setStatus('Jumped!');
+  `),
+  
+  go_to: makeSkill('go_to', `
+    const tgt = context.target || context.getObject(context.args?.target);
+    if (!tgt) { context.setStatus('Cannot find target: ' + (context.args?.target || '?')); return; }
+    const tp = tgt.position; const rp = context.getPos();
+    const dx = rp.x - tp[0]; const dz = rp.z - tp[2];
+    const dist = Math.sqrt(dx*dx+dz*dz) || 1;
+    const success = await context.navigateTo(tp[0] + (dx/dist)*0.6, 1.2, tp[2] + (dz/dist)*0.6);
+    if (success) { context.setStatus('Arrived at ' + (tgt.name || tgt.id) + '!'); }
+    else { context.setStatus('Got stuck trying to reach ' + (tgt.name || tgt.id)); }
+  `),
+  
+  go_to_object: makeSkill('go_to_object', `
+    const tgt = context.target || context.getObject(context.args?.target);
+    if (!tgt) { context.setStatus('Cannot find target: ' + (context.args?.target || '?')); return; }
+    const tp = tgt.position; const rp = context.getPos();
+    const dx = rp.x - tp[0]; const dz = rp.z - tp[2];
+    const dist = Math.sqrt(dx*dx+dz*dz) || 1;
+    const success = await context.navigateTo(tp[0] + (dx/dist)*0.6, 1.2, tp[2] + (dz/dist)*0.6);
+    if (success) { context.setStatus('Arrived at ' + (tgt.name || tgt.id) + '!'); }
+    else { context.setStatus('Got stuck trying to reach ' + (tgt.name || tgt.id)); }
+  `),
+  
+  pick_up: makeSkill('pick_up', `
+    if (!context.target) { context.setStatus('No target'); return; }
+    const tp = context.target.position; const rp = context.getPos();
+    const dx = rp.x - tp[0]; const dz = rp.z - tp[2];
+    const dist = Math.sqrt(dx*dx+dz*dz) || 1;
+    const success = await context.navigateTo(tp[0] + (dx/dist)*0.6, 1.2, tp[2] + (dz/dist)*0.6);
+    if (!success) { context.setStatus('Got stuck approaching ' + context.target.id); return; }
+    context.setArm(-1.2);
+    await context.wait(300);
+    const grabbed = context.grab(context.target.id);
+    context.setArm(0);
+    if (grabbed) { context.setStatus('Picked up!'); }
+    else { context.setStatus('Failed to grab (too far?)'); }
+  `),
+  
+  pick_up_object: makeSkill('pick_up_object', `
+    if (!context.target) { context.setStatus('No target'); return; }
+    const tp = context.target.position; const rp = context.getPos();
+    const dx = rp.x - tp[0]; const dz = rp.z - tp[2];
+    const dist = Math.sqrt(dx*dx+dz*dz) || 1;
+    const success = await context.navigateTo(tp[0] + (dx/dist)*0.6, 1.2, tp[2] + (dz/dist)*0.6);
+    if (!success) { context.setStatus('Got stuck approaching ' + context.target.id); return; }
+    context.setArm(-1.2);
+    await context.wait(300);
+    const grabbed = context.grab(context.target.id);
+    context.setArm(0);
+    if (grabbed) { context.setStatus('Picked up!'); }
+    else { context.setStatus('Failed to grab (too far?)'); }
+  `),
+  
+  release: makeSkill('release', `
+    context.release();
+    context.setArm(0);
+    context.setStatus('Released!');
+  `),
+  
+  spin: makeSkill('spin', `
+    const p = context.getPos();
+    for (let i = 0; i <= 8; i++) {
+      const a = (i/8)*Math.PI*2;
+      context.setPos(p.x + Math.cos(a)*0.3, p.y, p.z + Math.sin(a)*0.3);
+      await context.wait(80);
+    }
+    context.setPos(p.x, p.y, p.z);
+    context.setStatus('Spun!');
+  `),
+  
+  patrol: makeSkill('patrol', `
+    const corners = [[-2,1.2,-2],[-2,1.2,2],[2,1.2,2],[2,1.2,-2]];
+    for (const c of corners) {
+      await context.navigateTo(c[0],c[1],c[2]);
+      await context.wait(200);
+    }
+    context.setStatus('Patrol done!');
+  `),
+  
+  fly: makeSkill('fly', `
+    const p = context.getPos();
+    context.setPos(p.x, p.y + 1.5, p.z);
+    await context.wait(1000);
+    context.setPos(p.x, 1.2, p.z);
+    context.setStatus('Landed!');
+  `),
+  
+  dance: makeSkill('dance', `
+    for (let i = 0; i < 4; i++) {
+      const p = context.getPos();
+      context.setPos(p.x+0.3, p.y+0.3, p.z); await context.wait(150);
+      context.setPos(p.x-0.3, p.y, p.z); await context.wait(150);
+      context.setPos(p.x, p.y, p.z); await context.wait(150);
+    }
+    context.setStatus('Danced!');
+  `),
+  
+  scanforobject: makeSkill('scanForObject', `
+    const tgt = context.args?.target;
+    if (!tgt) { context.setStatus('No target to scan for.'); return; }
+    if (context.scanForObject) {
+      const found = await context.scanForObject(tgt);
+      if (found) context.setStatus('Found ' + found.name + '!');
+      else context.setStatus('Could not find ' + tgt + '.');
+    } else {
+      context.setStatus('Scan unavailable.');
+    }
+  `),
+  
+  scan_room: makeSkill('scan_room', `
+    if (context.fullScan) {
+      const found = await context.fullScan();
+      context.setStatus('Scan complete. Found ' + found.length + ' objects.');
+    } else {
+      context.setStatus('Scan unavailable.');
+    }
+  `),
 }
+
 
 // Session skills — invented this session, not yet approved
 const SESSION_SKILLS = {}

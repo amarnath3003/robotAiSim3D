@@ -293,6 +293,7 @@ export async function inventSkill(skillName, instruction, existingSkills) {
   const prompt = `Write JS async function body for robot skill "${skillName}": "${instruction}"
 
 API: context.getPos() context.setPos(x,y,z) context.navigateTo(x,y,z,speed?) context.setArm(-1.5to1.5) context.grab(id) context.release() context.setEye(0xRRGGBB) context.wait(ms) context.getObject(id) context.target context.setStatus(text) context.getWorldBounds()
+NOTE: navigateTo and grab return success booleans. Don't navigate exactly to object centers (leave ~0.6m gap) to avoid physical collisions.
 
 Robot@[${rp.x.toFixed(1)},${rp.y.toFixed(1)},${rp.z.toFixed(1)}] holding:${state.robot.heldObject || 'none'}
 Objects: ${objects}
