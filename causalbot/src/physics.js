@@ -254,6 +254,24 @@ export function stepPhysics(delta) {
     }
   }
 
+  // Sync held object kinematic position so it doesn't leave a ghost collider behind
+  if (state.robot.heldObject) {
+    const heldObj = state.world.objects[state.robot.heldObject]
+    if (heldObj && heldObj._body) {
+      // The visual mesh was already updated in robot.js by attaching to the hand
+      const mesh = state.scene.three?.getObjectByName(state.robot.heldObject)
+      if (mesh) {
+        const wp = new THREE.Vector3()
+        mesh.getWorldPosition(wp)
+        heldObj._body.setNextKinematicTranslation({ x: wp.x, y: wp.y, z: wp.z })
+        
+        const wq = new THREE.Quaternion()
+        mesh.getWorldQuaternion(wq)
+        heldObj._body.setNextKinematicRotation(wq)
+      }
+    }
+  }
+
   // Fixed-step accumulator — decoupled from frame rate
   accumulator += Math.min(delta, FIXED_STEP * MAX_SUBSTEPS)
   while (accumulator >= FIXED_STEP) {
@@ -610,6 +628,24 @@ function _tickShards(delta) {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 export function getWorld() { return world }
+
+export function releaseObjectPhysics(objectId, robotPos, robotAngle) {
+  const obj = state.world.objects[objectId]
+  if (!obj || !obj._body) return
+
+  // Calculate release position (slightly in front of robot)
+  const tx = robotPos.x + Math.sin(robotAngle) * 0.5
+  const ty = robotPos.y + 0.6 // drop height
+  const tz = robotPos.z + Math.cos(robotAngle) * 0.5
+
+  obj._body.setTranslation({ x: tx, y: ty, z: tz }, true)
+  obj._body.setLinvel({ x: 0, y: 0, z: 0 }, true)
+  obj._body.setAngvel({ x: 0, y: 0, z: 0 }, true)
+  
+  // Make sure it's fully dynamic
+  obj._body.setBodyType(0) // Dynamic
+  obj._body.wakeUp()
+}
 
 function _updateStatus(text) {
   const el = document.getElementById('status-bar')

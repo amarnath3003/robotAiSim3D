@@ -452,7 +452,6 @@ for(let step=0;step<80;step++){
   const best=_bq(s);
   const act=_A[best.a];
   
-  // If Q-table suggests "grab" but we're far, override with direct approach
   if(best.a===8 || best.v<-0.5){
     // No useful Q-value — walk directly toward object
     const angle=Math.atan2(ox-rp.x, oz-rp.z);
@@ -462,24 +461,23 @@ for(let step=0;step<80;step++){
     const b=context.getWorldBounds();
     const cx=Math.max(b.minX+0.3,Math.min(b.maxX-0.3,tx));
     const cz=Math.max(b.minZ+0.3,Math.min(b.maxZ-0.3,tz));
-    await context.navigateTo(cx, rp.y, cz, 2.2);
+    const success = await context.navigateTo(cx, rp.y, cz, 2.2);
+    if (!success) _stuckCount++; else _stuckCount = 0;
   } else {
     // Use Q-table action direction, but navigate at robot speed
     const b=context.getWorldBounds();
     const tx=Math.max(b.minX+0.3,Math.min(b.maxX-0.3,rp.x+act.dx*3));
     const tz=Math.max(b.minZ+0.3,Math.min(b.maxZ-0.3,rp.z+act.dz*3));
-    await context.navigateTo(tx, rp.y, tz, 2.0);
+    const success = await context.navigateTo(tx, rp.y, tz, 2.0);
+    if (!success) _stuckCount++; else _stuckCount = 0;
   }
   
-  // Stuck detection
-  const newRp=context.getPos();
-  const moved=Math.hypot(newRp.x-rp.x, newRp.z-rp.z);
-  if(moved<0.05){ _stuckCount++; }else{ _stuckCount=0; }
-  if(_stuckCount>3){
-    // Escape: navigate towards object but don't ram it
-    const escapeAngle = Math.atan2(ox-newRp.x, oz-newRp.z);
-    await context.navigateTo(ox - Math.sin(escapeAngle)*(_GR*0.8), rp.y, oz - Math.cos(escapeAngle)*(_GR*0.8), 2.5);
-    _stuckCount=0;
+  if(_stuckCount>2){
+    context.setStatus('⚠️ RL Policy stuck, attempting escape maneuver...');
+    // Escape: pick a random direction away from current stuck position
+    const escapeAngle = Math.random() * Math.PI * 2;
+    await context.navigateTo(rp.x+Math.sin(escapeAngle)*0.8, rp.y, rp.z+Math.cos(escapeAngle)*0.8, 2.0);
+    _stuckCount = 0; // Reset after escape attempt
   }
   
   await context.wait(50);

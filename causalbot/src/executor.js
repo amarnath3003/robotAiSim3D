@@ -39,7 +39,9 @@ function buildContext(instruction) {
         return false
       }
 
-      if (obj._body) obj._body.setBodyType(0)
+      if (obj._body) {
+        obj._body.setBodyType(2) // 2 = KinematicPositionBased
+      }
       obj.status            = 'held'
       state.robot.heldObject = obj.id
       state.robot.eyeColor  = 0x00ff88
