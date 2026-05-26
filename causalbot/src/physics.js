@@ -65,16 +65,20 @@ export async function initPhysics() {
     )
   })
 
-  // ── Helper: best-fit convex hull or fallback ──
-  function getBestCollider(id, fallbackDesc) {
+  // ── Helper: exact mesh colliders (trimesh or convexDecomposition) ──
+  function getBestCollider(id, fallbackDesc, isDynamic = false) {
     const root = state.scene.three?.getObjectByName(id)
     if (!root) return fallbackDesc
     if (state.scene.three) state.scene.three.updateMatrixWorld(true)
 
     const vertices = []
+    const indices = []
+    let vertexOffset = 0
+
     root.traverse(c => {
       if (c.isMesh && c.geometry?.attributes.position) {
         const pos     = c.geometry.attributes.position
+        const idx     = c.geometry.index
         const rootInv = new THREE.Matrix4().copy(root.matrixWorld).invert()
         const m       = c !== root
           ? new THREE.Matrix4().copy(c.matrixWorld).premultiply(rootInv)
@@ -84,11 +88,29 @@ export async function initPhysics() {
           v.fromBufferAttribute(pos, i).applyMatrix4(m)
           vertices.push(v.x, v.y, v.z)
         }
+        
+        if (idx) {
+          for (let i = 0; i < idx.count; i++) {
+            indices.push(idx.getX(i) + vertexOffset)
+          }
+        } else {
+          for (let i = 0; i < pos.count; i += 3) {
+            if (i + 2 < pos.count) {
+              indices.push(i + vertexOffset, i + 1 + vertexOffset, i + 2 + vertexOffset)
+            }
+          }
+        }
+        vertexOffset += pos.count
       }
     })
 
-    if (vertices.length >= 9) {
-      const desc = RAPIER.ColliderDesc.convexHull(new Float32Array(vertices))
+    if (vertices.length >= 9 && indices.length >= 3) {
+      const vArr = new Float32Array(vertices)
+      const iArr = new Uint32Array(indices)
+      // Rapier requires convexDecomposition for dynamic bodies, trimesh for fixed/kinematic
+      const desc = isDynamic
+        ? RAPIER.ColliderDesc.convexDecomposition(vArr, iArr)
+        : RAPIER.ColliderDesc.trimesh(vArr, iArr)
       if (desc) return desc
     }
     return fallbackDesc
@@ -96,7 +118,7 @@ export async function initPhysics() {
 
   // ── Dynamic scene objects ──
   setupObject('object_glass', {
-    collider:       () => getBestCollider('object_glass', RAPIER.ColliderDesc.cylinder(0.07, 0.04)),
+    collider:       () => getBestCollider('object_glass', RAPIER.ColliderDesc.cylinder(0.07, 0.04), true),
     mass:           0.22,
     friction:       0.6,
     restitution:    0.08,
@@ -105,7 +127,7 @@ export async function initPhysics() {
   })
 
   setupObject('object_box', {
-    collider:       () => getBestCollider('object_box', RAPIER.ColliderDesc.cuboid(0.17, 0.17, 0.17)),
+    collider:       () => getBestCollider('object_box', RAPIER.ColliderDesc.cuboid(0.17, 0.17, 0.17), true),
     mass:           2.8,
     friction:       0.9,
     restitution:    0.06,
@@ -114,7 +136,7 @@ export async function initPhysics() {
   })
 
   setupObject('object_ball', {
-    collider:       () => getBestCollider('object_ball', RAPIER.ColliderDesc.ball(0.13)),
+    collider:       () => getBestCollider('object_ball', RAPIER.ColliderDesc.ball(0.13), true),
     mass:           0.45,
     friction:       0.25,
     restitution:    0.78,
@@ -134,7 +156,7 @@ export async function initPhysics() {
   )
   debugBody.setEnabledRotations(false, false, false, true)  // lock all physics rotations — visual layer handles turning
 
-  const dbCollider = getBestCollider('debugRobot', RAPIER.ColliderDesc.capsule(0.15, 0.1))
+  const dbCollider = getBestCollider('debugRobot', RAPIER.ColliderDesc.capsule(0.15, 0.1), true)
   dbCollider.setFriction(0.0).setRestitution(0.0)
   world.createCollider(dbCollider, debugBody)
   state.debugRobot._body = debugBody
@@ -144,10 +166,13 @@ export async function initPhysics() {
   const aiBody = world.createRigidBody(
     RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(arp[0], arp[1], arp[2])
   )
-  const aiCollider = getBestCollider('aiRobot', RAPIER.ColliderDesc.capsule(0.15, 0.1))
-  aiCollider.setFriction(0.0).setRestitution(0.0)
-  world.createCollider(aiCollider, aiBody)
+  const aiColliderDesc = getBestCollider('aiRobot', RAPIER.ColliderDesc.capsule(0.15, 0.1), false)
+  aiColliderDesc.setFriction(0.0).setRestitution(0.0)
+  const aiCollider = world.createCollider(aiColliderDesc, aiBody)
+  
   state.robot._body = aiBody
+  state.robot._collider = aiCollider
+  state.robot._characterController = world.createCharacterController(0.02)
 
   state.scene.rapierWorld = world
   console.log('[Physics] Engine ready — game-quality simulation active')
@@ -188,11 +213,44 @@ function setupObject(id, cfg) {
 export function stepPhysics(delta) {
   if (!world) return
 
-  // Sync AI robot kinematic body to its visual mesh position
-  const aiMesh = state.scene.three?.getObjectByName('aiRobot')
-  if (aiMesh && state.robot._body) {
-    state.robot._body.setNextKinematicTranslation(aiMesh.position)
-    state.robot._body.setNextKinematicRotation(aiMesh.quaternion)
+  // ── AI Robot Collision-Aware Movement ──
+  // Use character controller to validate intended moves against walls
+  if (state.robot._characterController && state.robot._body && state.robot._collider) {
+    const currentPos = state.robot._body.translation()
+    const intendedPos = { x: state.robot.position[0], y: state.robot.position[1], z: state.robot.position[2] }
+    
+    const dx = intendedPos.x - currentPos.x
+    const dy = intendedPos.y - currentPos.y
+    const dz = intendedPos.z - currentPos.z
+    
+    // Only compute physics sweep if there's significant movement intent
+    if (Math.abs(dx) > 0.0001 || Math.abs(dy) > 0.0001 || Math.abs(dz) > 0.0001) {
+      state.robot._characterController.computeColliderMovement(
+        state.robot._collider,
+        { x: dx, y: dy, z: dz }
+      )
+      
+      const corrected = state.robot._characterController.computedMovement()
+      const newPos = {
+        x: currentPos.x + corrected.x,
+        y: currentPos.y + corrected.y,
+        z: currentPos.z + corrected.z
+      }
+      
+      state.robot._body.setNextKinematicTranslation(newPos)
+      
+      // Crucial: write back the true collision-checked position to state
+      // so robot.js's navigation loop doesn't push through walls continuously
+      state.robot.position[0] = newPos.x
+      state.robot.position[1] = newPos.y
+      state.robot.position[2] = newPos.z
+    }
+    
+    // Sync rotation from visual mesh to the kinematic body so the trimesh collider faces the right way
+    const aiMesh = state.scene.three?.getObjectByName('aiRobot')
+    if (aiMesh) {
+      state.robot._body.setNextKinematicRotation(aiMesh.quaternion)
+    }
   }
 
   // Fixed-step accumulator — decoupled from frame rate
