@@ -122,19 +122,39 @@ async function handleTraining(instruction) {
   const result = await trainPolicy(task, (episode, total, reward, epsilon) => {
     const progress = getTrainingProgress()
     if (progress) {
-      updateRLPanel(progress, trainingState.rewardHistory)
+      updateRLPanel(progress, trainingState.rewardHistory, trainingState.successHistory)
     }
   })
 
   // Step 4 — Show result
   if (result) {
-    showRLResult(result.successRate)
-    if (result.successRate > 0) {
-      remember(instruction, 'success', `RL training done — ${result.successRate}% success. Skill: ${task.skillName}`)
-      showApprovalUI(task.skillName || task.name.replace(/\s+/g, '_'))
+    showRLResult(result.successRate, result.converged)
+
+    if (result.successRate > 0 && result.skill) {
+      remember(instruction, 'success', `RL training done — ${result.successRate}% success${result.converged ? ' (converged early)' : ''}. Skill: ${task.skillName}`)
+
+      // ── Demo run: execute the learned policy once in the real environment ──
+      const skillName = task.skillName || task.name.replace(/\s+/g, '_')
+      const skill = getSkill(skillName)
+      if (skill) {
+        setStatus(`🎬 Demo: running learned policy "${skillName}"...`)
+        setAgentStatus('Demonstrating learned skill', 'navigating')
+        const ctx = {
+          ...buildContext(instruction),
+          args: {},
+          target: getObject(task.targetObjectId),
+        }
+        try {
+          await skill.fn(ctx)
+        } catch (demoErr) {
+          console.warn('[RL] Demo run error:', demoErr)
+        }
+      }
+
+      showApprovalUI(skillName)
     } else {
       remember(instruction, 'fail', 'RL training produced 0% success rate — try a simpler task')
-      setStatus('Training failed to converge. Try a simpler task.')
+      setStatus('Training failed to converge. Try a simpler task or increase episodes.')
     }
   }
 
