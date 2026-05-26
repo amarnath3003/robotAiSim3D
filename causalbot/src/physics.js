@@ -481,8 +481,8 @@ export function releaseObjectPhysics(objectId, robotPos, forwardAngle = 0) {
   const obj = state.world.objects[objectId]
   if (!obj?._body) return
 
-  // Switch back to dynamic
-  obj._body.setBodyType(2, true)
+  // Switch back to dynamic (0) so gravity takes over
+  obj._body.setBodyType(0, true)
 
   // Place slightly in front of robot
   obj._body.setTranslation(
@@ -628,24 +628,6 @@ function _tickShards(delta) {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 export function getWorld() { return world }
-
-export function releaseObjectPhysics(objectId, robotPos, robotAngle) {
-  const obj = state.world.objects[objectId]
-  if (!obj || !obj._body) return
-
-  // Calculate release position (slightly in front of robot)
-  const tx = robotPos.x + Math.sin(robotAngle) * 0.5
-  const ty = robotPos.y + 0.6 // drop height
-  const tz = robotPos.z + Math.cos(robotAngle) * 0.5
-
-  obj._body.setTranslation({ x: tx, y: ty, z: tz }, true)
-  obj._body.setLinvel({ x: 0, y: 0, z: 0 }, true)
-  obj._body.setAngvel({ x: 0, y: 0, z: 0 }, true)
-  
-  // Make sure it's fully dynamic
-  obj._body.setBodyType(0) // Dynamic
-  obj._body.wakeUp()
-}
 
 function _updateStatus(text) {
   const el = document.getElementById('status-bar')
