@@ -181,7 +181,7 @@ export function updateRLPanel(progress, rewardHistory, successHistory) {
   const streakBar = document.getElementById('rl-streak')
   const streakNum = document.getElementById('rl-streak-num')
   if (streakBar && streakNum) {
-    const streakPct = Math.min(100, (progress.consecutiveSucc / 35) * 100)
+    const streakPct = Math.min(100, (progress.consecutiveSucc / 40) * 100)
     streakBar.style.width = streakPct + '%'
     streakNum.textContent = progress.consecutiveSucc
   }

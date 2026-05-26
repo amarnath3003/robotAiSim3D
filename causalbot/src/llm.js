@@ -10,17 +10,30 @@ const MODEL   = import.meta.env.VITE_NVIDIA_MODEL || 'google/gemma-4-31b-it'
 
 // ─── Training intent keywords ─────────────────────────────────────────────────
 // Checked BEFORE hitting the planner so we never waste a token on non-training tasks.
+// IMPORTANT: 'run', 'execute', 'do' are NOT training commands — they INVOKE learned skills.
 
 const TRAIN_KEYWORDS = [
-  'train', 'learn to', 'teach', 'practice', 'reinforce',
-  'use rl', 'rl train', 'train the robot',
+  'train',
+  'teach the robot',
+  'teach it to',
+  'learn to',
+  'practice',
+  'reinforce',
+  'use rl',
+  'rl train',
+  'train the robot',
+  'train robot',
 ]
 
 /**
- * Returns true if the instruction is asking for RL training.
+ * Returns true if the instruction is asking for RL training (not skill execution).
+ * "run pick_up_ball_rl" → false (invoke skill)
+ * "train the robot to pick up the ball" → true (start training)
  */
 export function isTrainingInstruction(instruction) {
-  const lower = instruction.toLowerCase()
+  const lower = instruction.toLowerCase().trim()
+  // Explicitly exclude "run X" / "execute X" / "do X" — those invoke existing skills
+  if (/^(run|execute|do|perform|start|activate)\s/.test(lower)) return false
   return TRAIN_KEYWORDS.some(k => lower.includes(k))
 }
 
