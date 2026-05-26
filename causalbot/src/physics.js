@@ -107,9 +107,10 @@ export async function initPhysics() {
     if (vertices.length >= 9 && indices.length >= 3) {
       const vArr = new Float32Array(vertices)
       const iArr = new Uint32Array(indices)
-      // Rapier requires convexDecomposition for dynamic bodies, trimesh for fixed/kinematic
+      // Rapier forbids trimesh on dynamic bodies. We must use convexHull for dynamic,
+      // and trimesh for fixed/kinematic bodies (walls, robot, etc).
       const desc = isDynamic
-        ? RAPIER.ColliderDesc.convexDecomposition(vArr, iArr)
+        ? RAPIER.ColliderDesc.convexHull(vArr)
         : RAPIER.ColliderDesc.trimesh(vArr, iArr)
       if (desc) return desc
     }
