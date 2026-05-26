@@ -19,12 +19,12 @@ export const state = {
 
   controlMode: 'ai', // 'ai' | 'debug'
 
-  perceptionMode: 'omniscient', // 'omniscient' | 'vision'
+  perceptionMode: 'vision', // 'omniscient' | 'vision'
 
   // Ground truth world objects — single source of truth
   world: {
     objects: {
-      object_glass: { id: 'object_glass', name: 'glass', mass: 0.3, fragility: 0.7, snapable: true,  status: 'intact', position: [0, 0.87, 3], size: [0.08, 0.12, 0.08] },
+      object_glass: { id: 'object_glass', name: 'glass', mass: 0.3, fragility: 0.1,snapable: true,  status: 'intact', position: [0, 0.87, 3], size: [0.08, 0.12, 0.08] },
       object_box:   { id: 'object_box',   name: 'box',   mass: 2.0, fragility: 0.1, snapable: true,  status: 'intact', position: [-1.9, 0.22, 1.1],  size: [0.35, 0.35, 0.35] },
       object_ball:  { id: 'object_ball',  name: 'ball',  mass: 0.5, fragility: 0.2, snapable: true,  status: 'intact', position: [2.2, 0.18, -2.0],  size: [0.2,  0.2,  0.2]  },
     },

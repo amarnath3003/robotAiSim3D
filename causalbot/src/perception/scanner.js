@@ -160,21 +160,27 @@ export async function scanForObject(nameOrId) {
 
 // ─── Approach object ──────────────────────────────────────────────────────────
 
-/**
- * Approach a perceived object using pathfinding-compatible navigation.
- * Imports robot.js navigateTo to use A* pathfinding (avoids walls).
- */
-export async function approachObject(perceivedObj, stopDistance = 0.35) {
+export async function approachObject(perceivedObj, stopDistance = 0.6) {
   if (!perceivedObj) return false
 
   const { navigateTo } = await import('../robot.js')
+  const { getRobotPos } = await import('../state.js')
+
   const [tx, ty, tz] = perceivedObj.estimatedPos
+  const rp = getRobotPos()
+  
+  const dx = rp.x - tx
+  const dz = rp.z - tz
+  const dist = Math.sqrt(dx*dx + dz*dz) || 1
+  
+  const targetX = tx + (dx/dist) * stopDistance
+  const targetZ = tz + (dz/dist) * stopDistance
 
   setStatus(`🚶 Approaching ${perceivedObj.name}...`)
   setAgentStatus(`Navigating to ${perceivedObj.name}`, 'navigating')
 
   return new Promise(resolve => {
-    navigateTo(tx, 0.35, tz, () => resolve(true), 2.5)
+    navigateTo(targetX, 0.35, targetZ, (success) => resolve(success), 2.5)
   })
 }
 

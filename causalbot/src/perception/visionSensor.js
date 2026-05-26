@@ -105,8 +105,20 @@ export function castVision(facingAngle) {
     const intersects = raycaster.intersectObjects(candidates, false)
     if (!intersects.length) continue
 
-    const { object: hitMesh, point, distance } = intersects[0]
-    const rootName = getRootName(hitMesh)
+    // Find the first valid hit that is NOT the currently held object
+    let hitMesh = null, point = null, distance = null, rootName = null
+    for (const hit of intersects) {
+      const rn = getRootName(hit.object)
+      if (!rn) continue
+      if (rn === state.robot.heldObject) continue // Ignore what we are holding!
+      
+      hitMesh = hit.object
+      point = hit.point
+      distance = hit.distance
+      rootName = rn
+      break
+    }
+
     if (!rootName) continue
 
     const acc = accumulator.get(rootName)
