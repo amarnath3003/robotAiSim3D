@@ -199,11 +199,34 @@ function _buildRLDashboard() {
     </div>
 
     <div class="rld-section">
+      <div class="rld-section-title">SIMULATION OF DEATH</div>
+      <div class="rld-kv-row">
+        <span class="rld-key">☠ DEATHS</span><span class="rld-val" id="rld-deaths" style="color:#f87171">0</span>
+        <span class="rld-key" style="margin-left:8px">✓ WINS</span><span class="rld-val" id="rld-succ" style="color:#4ade80">0</span>
+        <span class="rld-key" style="margin-left:8px">RATE</span><span class="rld-val" id="rld-rate">—</span>
+      </div>
+      <div class="rld-win-bar-wrap">
+        <div class="rld-win-bar-track"><div class="rld-win-bar-fill" id="rld-win-fill"></div></div>
+      </div>
+      <div class="rld-kv-row" style="margin-top:4px">
+        <span class="rld-key">EP REWARD</span><span class="rld-val" id="rld-ep-reward">0.00</span>
+        <span class="rld-key" style="margin-left:8px">TOTAL</span><span class="rld-val" id="rld-total">0</span>
+      </div>
+      <div class="rld-section-title" style="margin-top:8px">EPISODE HISTORY</div>
+      <canvas id="rld-history-canvas" width="220" height="28" title="Last 10 episodes: green=win, red=death, grey=timeout"></canvas>
+    </div>
+
+    <div class="rld-section">
       <div class="rld-section-title">ENV PARAMS</div>
       <div class="rld-param-row">
         <label class="rld-param-label">Max Steps</label>
-        <input class="rld-param-input" id="rld-param-maxsteps" type="number" value="1000" min="50" max="5000" step="50" />
+        <input class="rld-param-input" id="rld-param-maxsteps" type="number" value="500" min="50" max="5000" step="50" />
         <button class="rld-btn rld-btn-sm" id="rld-apply-params">Apply</button>
+      </div>
+      <div class="rld-param-row" style="margin-top:4px">
+        <label class="rld-param-label">Death Dist</label>
+        <input class="rld-param-input" id="rld-param-deathdist" type="number" value="0.28" min="0.1" max="1.0" step="0.02" />
+        <button class="rld-btn rld-btn-sm" id="rld-apply-deathdist">Apply</button>
       </div>
     </div>
 
@@ -211,11 +234,33 @@ function _buildRLDashboard() {
       <div class="rld-section-title">QUICK CONTROLS</div>
       <div class="rld-btn-row">
         <button class="rld-btn" id="rld-btn-reset">⟳ Reset</button>
-        <button class="rld-btn rld-btn-rl" id="rld-btn-mode-rl">→ RL Mode</button>
-        <button class="rld-btn" id="rld-btn-mode-ai">→ AI Mode</button>
+        <button class="rld-btn" id="rld-btn-train" style="background:rgba(74,222,128,0.15);border-color:rgba(74,222,128,0.4)">▶ Train</button>
+        <button class="rld-btn" id="rld-btn-mode-ai">→ AI</button>
       </div>
     </div>
   `
+
+  // Load saved params or use defaults
+  const _savedParams = JSON.parse(localStorage.getItem('rld-params') || '{}')
+  let _trainMode = _savedParams.train_mode !== false // default true
+
+  // Sync inputs on boot
+  if (_savedParams.max_steps)  document.getElementById('rld-param-maxsteps').value = _savedParams.max_steps
+  if (_savedParams.death_dist) document.getElementById('rld-param-deathdist').value = _savedParams.death_dist
+
+  const _saveAndSend = (key, val) => {
+    _savedParams[key] = val
+    localStorage.setItem('rld-params', JSON.stringify(_savedParams))
+    setRLParams({ [key]: val })
+  }
+
+  // Send initial params once connected
+  const checkConn = setInterval(() => {
+    if (isRLConnected()) {
+      clearInterval(checkConn)
+      setRLParams(_savedParams)
+    }
+  }, 500)
 
   // Wire up controls
   document.getElementById('rld-set-goal').addEventListener('click', () => {
@@ -230,24 +275,37 @@ function _buildRLDashboard() {
   document.getElementById('rld-apply-params').addEventListener('click', () => {
     const ms = parseInt(document.getElementById('rld-param-maxsteps').value)
     if (!isNaN(ms) && ms > 0) {
-      setRLParams({ max_steps: ms })
-      setStatus(`⚙ Max steps set to ${ms}`)
+      _saveAndSend('max_steps', ms)
+      setStatus(`⚙ Max steps → ${ms}`)
     }
   })
 
-  document.getElementById('rld-btn-reset').addEventListener('click', () => {
-    import('./rl.js').then(m => {
-      if (typeof m.sendPromptRL === 'function') {
-        // signal reset via WebSocket param
-        setRLParams({ reset: true })
-        setStatus('↺ Reset sent to agent')
-      }
-    })
+  document.getElementById('rld-apply-deathdist').addEventListener('click', () => {
+    const dd = parseFloat(document.getElementById('rld-param-deathdist').value)
+    if (!isNaN(dd) && dd > 0) {
+      _saveAndSend('death_dist', dd)
+      setStatus(`☠ Death dist → ${dd.toFixed(2)} m`)
+    }
   })
 
-  document.getElementById('rld-btn-mode-rl').addEventListener('click', () => {
-    state.controlMode = 'rl'
-    setStatus('🤖 Switched to RL mode')
+  const _updateTrainBtn = () => {
+    const btn = document.getElementById('rld-btn-train')
+    if (!btn) return
+    btn.textContent = _trainMode ? '▶ Train' : '⏸ Manual'
+    btn.style.background = _trainMode ? 'rgba(74,222,128,0.15)' : 'rgba(251,191,36,0.15)'
+  }
+  _updateTrainBtn() // init
+
+  document.getElementById('rld-btn-train').addEventListener('click', () => {
+    _trainMode = !_trainMode
+    _saveAndSend('train_mode', _trainMode)
+    _updateTrainBtn()
+    setStatus(_trainMode ? '▶ Train mode ON — episodes auto-chain' : '⏸ Manual mode — prompt-gated')
+  })
+
+  document.getElementById('rld-btn-reset').addEventListener('click', () => {
+    setRLParams({ reset: true })
+    setStatus('↺ Reset signal sent')
   })
 
   document.getElementById('rld-btn-mode-ai').addEventListener('click', () => {
@@ -328,16 +386,25 @@ function _tickRLDashboard() {
   // Simulation of Death stats
   _setText('rld-deaths', t.deaths)
   _setText('rld-succ',   t.successes)
-  const total = t.deaths + t.successes
-  const rateEl = document.getElementById('rld-rate')
+
+  // Use win_rate from Python (computed over last 20 episodes)
+  const winRate = t.winRate ?? 0
+  const rateEl  = document.getElementById('rld-rate')
   if (rateEl) {
+    const total = t.deaths + t.successes
     if (total > 0) {
-      const rate = (t.successes / total * 100).toFixed(0) + '%'
-      rateEl.textContent  = rate
-      rateEl.style.color  = t.successes / total > 0.5 ? '#4ade80' : t.successes / total > 0.2 ? '#f59e0b' : '#f87171'
+      rateEl.textContent = (winRate * 100).toFixed(0) + '%'
+      rateEl.style.color = winRate > 0.5 ? '#4ade80' : winRate > 0.2 ? '#f59e0b' : '#f87171'
     } else {
       rateEl.textContent = '—'
     }
+  }
+
+  // Win-rate progress bar
+  const winFill = document.getElementById('rld-win-fill')
+  if (winFill) {
+    winFill.style.width      = (winRate * 100).toFixed(1) + '%'
+    winFill.style.background = winRate > 0.5 ? '#4ade80' : winRate > 0.2 ? '#f59e0b' : '#f87171'
   }
 
   const epRewEl = document.getElementById('rld-ep-reward')
@@ -347,22 +414,25 @@ function _tickRLDashboard() {
     epRewEl.style.color = er > 0 ? '#4ade80' : er < -5 ? '#f87171' : '#888'
   }
 
+  _setText('rld-total', t.totalSteps)
+
   // Step progress bar
   const fill = document.getElementById('rld-step-fill')
   if (fill) {
     const pct = Math.min(t.stepCount / t.maxSteps, 1) * 100
-    fill.style.width = pct.toFixed(1) + '%'
+    fill.style.width      = pct.toFixed(1) + '%'
     fill.style.background = pct > 80 ? '#f87171' : pct > 50 ? '#f59e0b' : '#4ade80'
   }
 
   // Lidar radar
   _drawLidar(t.lastLidar)
 
-  // Sync max_steps input if changed externally
+  // Episode history sparkline
+  _drawHistory(t.history || [])
+
+  // Sync params inputs
   const msEl = document.getElementById('rld-param-maxsteps')
-  if (msEl && document.activeElement !== msEl) {
-    msEl.value = t.maxSteps
-  }
+  if (msEl && document.activeElement !== msEl) msEl.value = t.maxSteps
 }
 
 function _setText(id, val) {
@@ -439,9 +509,48 @@ function _drawLidar(readings) {
     ctx.fill()
   }
 
-  // Robot dot
+  // Robot origin dot
   ctx.beginPath()
   ctx.arc(cx, cy, 4, 0, Math.PI * 2)
   ctx.fillStyle = '#a78bfa'
   ctx.fill()
+}
+
+function _drawHistory(history) {
+  const canvas = document.getElementById('rld-history-canvas')
+  if (!canvas) return
+  const ctx = canvas.getContext('2d')
+  const W = canvas.width, H = canvas.height
+  ctx.clearRect(0, 0, W, H)
+
+  if (!history || history.length === 0) {
+    ctx.fillStyle = 'rgba(255,255,255,0.15)'
+    ctx.font = '9px monospace'
+    ctx.fillText('no episodes yet', 4, H / 2 + 3)
+    return
+  }
+
+  const n    = history.length
+  const bw   = Math.floor(W / 10) - 2  // bar width
+  const gap  = 2
+
+  history.forEach((outcome, i) => {
+    const x = i * (bw + gap) + 1
+    const color = outcome === 'success' ? '#4ade80'
+                : outcome === 'death'   ? '#f87171'
+                : '#64748b'  // timeout = grey
+    const h = outcome === 'success' ? H - 4 : outcome === 'death' ? H - 4 : Math.floor(H * 0.5)
+    const y = H - h
+
+    ctx.fillStyle = color + '55'  // dim fill
+    ctx.fillRect(x, y, bw, h)
+
+    ctx.fillStyle = color
+    ctx.fillRect(x, y, bw, 3)  // bright top edge
+  })
+
+  // Legend
+  ctx.font = '7px monospace'
+  ctx.fillStyle = 'rgba(255,255,255,0.3)'
+  ctx.fillText(`${n}/10`, W - 22, 8)
 }

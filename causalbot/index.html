@@ -516,6 +516,43 @@
       }
       .rld-controls { border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px; }
 
+      /* Win-rate bar */
+      .rld-win-bar-wrap  { margin-top: 3px; }
+      .rld-win-bar-track {
+        height: 5px;
+        background: rgba(255,255,255,0.06);
+        border-radius: 3px;
+        overflow: hidden;
+        position: relative;
+      }
+      .rld-win-bar-fill {
+        height: 100%;
+        border-radius: 3px;
+        width: 0;
+        transition: width 0.4s ease, background 0.4s ease;
+      }
+
+      /* History sparkline */
+      #rld-history-canvas {
+        width: 100%;
+        height: 28px;
+        border-radius: 4px;
+        background: rgba(255,255,255,0.02);
+        border: 1px solid rgba(255,255,255,0.04);
+        display: block;
+      }
+
+      /* Scrollable panel */
+      #rl-dashboard {
+        max-height: calc(100vh - 80px);
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255,255,255,0.1) transparent;
+      }
+      #rl-dashboard::-webkit-scrollbar { width: 4px; }
+      #rl-dashboard::-webkit-scrollbar-track { background: transparent; }
+      #rl-dashboard::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
     </style>
   </head>
   <body>
