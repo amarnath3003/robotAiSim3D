@@ -1,12 +1,6 @@
 import { state } from './state.js'
 import { handleInstruction } from './executor.js'
-
-// ─── Mode label shown in the status bar ───────────────────────────────────────
-const MODE_LABELS = {
-  ai:    '🧠 AI',
-  debug: '🕹 Debug',
-  rl:    '🤖 RL',
-}
+import { isRLConnected, sendPromptRL } from './rl.js'
 
 export function initUI() {
   const input = document.getElementById('instruction')
@@ -15,21 +9,17 @@ export function initUI() {
     if (e.key !== 'Enter') return
     const text = input.value.trim()
     if (!text) return
-
     input.value = ''
 
-    if (state.controlMode === 'rl') {
-      // In RL mode forward the prompt to Python via WebSocket
-      input.disabled = true
-      const { sendPromptRL } = await import('./rl.js')
+    const mode = state.controlMode
+
+    if (mode === 'rl') {
+      // ── RL mode: forward to Python ─────────────────────────────────────
       sendPromptRL(text)
-      setStatus('Prompt sent to RL agent.')
-      input.disabled = false
-      input.focus()
       return
     }
 
-    // AI mode: normal LLM instruction handling
+    // ── AI mode: LLM instruction ───────────────────────────────────────────
     if (state.execution.running) return
     input.disabled = true
     await handleInstruction(text)
@@ -46,24 +36,26 @@ export function initUI() {
     }
   })
 
-  // Update the placeholder to reflect current mode
-  _updateInputHint(input)
-  // Poll — mode can change at runtime (Python connects / disconnects)
-  setInterval(() => _updateInputHint(input), 1000)
+  // Refresh placeholder every second to match current mode
+  const _refreshHint = () => {
+    if (!input) return
+    switch (state.controlMode) {
+      case 'rl':
+        input.placeholder = isRLConnected()
+          ? 'send goal to RL agent (e.g. "go to the ball")...'
+          : 'waiting for Python agent (run run_agent.py)...'
+        break
+      case 'debug':
+        input.placeholder = 'WASD to drive · press 1 for AI mode'
+        break
+      default:
+        input.placeholder = 'tell the robot what to do...'
+    }
+  }
+  _refreshHint()
+  setInterval(_refreshHint, 1000)
 
   console.log('UI ready')
-}
-
-function _updateInputHint(input) {
-  if (!input) return
-  const mode = state.controlMode
-  if (mode === 'rl') {
-    input.placeholder = 'send goal to RL agent... (Python must be running)'
-  } else if (mode === 'debug') {
-    input.placeholder = 'WASD to drive · press 1 for AI mode'
-  } else {
-    input.placeholder = 'tell the robot what to do...'
-  }
 }
 
 // ─── Thought sidebar ──────────────────────────────────────────────────────────
@@ -77,8 +69,8 @@ export function showThoughts(thoughtArray) {
   sidebar.classList.add('visible')
 
   thoughtArray.forEach((text, i) => {
-    const el = document.createElement('div')
-    el.className  = 'thought-step'
+    const el       = document.createElement('div')
+    el.className   = 'thought-step'
     el.textContent = text
     list.appendChild(el)
     setTimeout(() => el.classList.add('active'), i * 600)
@@ -91,8 +83,6 @@ export function clearThoughts() {
   if (sidebar) sidebar.classList.remove('visible')
   if (list)    list.innerHTML = ''
 }
-
-// ─── Status helpers ───────────────────────────────────────────────────────────
 
 export function setStatus(text) {
   const el = document.getElementById('status-bar')
