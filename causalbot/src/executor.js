@@ -7,7 +7,8 @@ import { planInstruction, inventSkill } from './llm.js'
 import { showThoughts, clearThoughts, setStatus, setAgentStatus } from './ui.js'
 import { ensureWorldModel, getVisionContextAdditions, resolveObject } from './perception/perceptionMode.js'
 
-// The context object passed to every skill function
+// ─── Context builder ──────────────────────────────────────────────────────────
+
 function buildContext(instruction) {
   return {
     navigateTo: (x, y, z, speed) => new Promise(resolve => {
@@ -26,10 +27,10 @@ function buildContext(instruction) {
     grab: (objectId) => {
       const obj = getObject(objectId)
       if (!obj || !obj.snapable) return false
-      if (obj._body) obj._body.setBodyType(0) // freeze physics
-      obj.status = 'held'
+      if (obj._body) obj._body.setBodyType(0)
+      obj.status             = 'held'
       state.robot.heldObject = obj.id
-      state.robot.eyeColor = 0x00ff88
+      state.robot.eyeColor   = 0x00ff88
       return true
     },
 
@@ -38,61 +39,61 @@ function buildContext(instruction) {
       const obj = getObject(state.robot.heldObject)
       if (obj) {
         obj.status = 'intact'
-        const rp = getRobotPos()
+        const rp    = getRobotPos()
         const angle = state.scene.three
           ?.getObjectByName('robot_body')
           ?.parent?.rotation?.y || 0
         releaseObjectPhysics(obj.id, rp, angle)
       }
       state.robot.heldObject = null
-      state.robot.eyeColor = 0x4488ff
+      state.robot.eyeColor   = 0x4488ff
     },
 
-    setEye: (hex) => { state.robot.eyeColor = hex },
-
-    wait: (ms) => new Promise(resolve => setTimeout(resolve, ms)),
-
-    getObject: (nameOrId) => getObject(nameOrId),
-
-    getWorldBounds: () => state.world.roomBounds,
-
-    remember: (outcome, detail) => remember(instruction, outcome, detail),
+    setEye:         (hex)       => { state.robot.eyeColor = hex },
+    wait:           (ms)        => new Promise(r => setTimeout(r, ms)),
+    getObject:      (nameOrId)  => getObject(nameOrId),
+    getWorldBounds: ()          => state.world.roomBounds,
+    remember:       (outcome, detail) => remember(instruction, outcome, detail),
 
     setStatus: (text) => {
       const el = document.getElementById('status-bar')
       if (el) el.textContent = text
-    }
+    },
   }
 }
 
+// ─── Main entry point ─────────────────────────────────────────────────────────
+
 export async function handleInstruction(instruction) {
+  // Guard: don't run LLM in RL mode (input is routed to Python instead)
+  if (state.controlMode === 'rl') return
   if (state.execution.running) return
+
   state.execution.running = true
-  state.robot.status = 'thinking'
+  state.robot.status      = 'thinking'
 
   try {
-    // Vision mode: scan before planning if world model empty
     await ensureWorldModel()
 
-    // Step 1 — LLM plans what to do
+    // Step 1 — LLM plans
     const plan = await planInstruction(instruction)
     if (!plan) { state.execution.running = false; return }
 
     console.log('Plan:', plan)
-    const thoughts = []
-    if (plan.reasoning) thoughts.push(`🧠 ${plan.reasoning}`)
-    if (plan.thoughts?.length) thoughts.push(...plan.thoughts)
-    if (plan.goal) thoughts.push(`🎯 Goal: ${plan.goal}`)
-    if (thoughts.length) showThoughts(thoughts)
 
-    // Step 2 — if new skill needed, invent it
+    const thoughts = []
+    if (plan.reasoning)       thoughts.push(`🧠 ${plan.reasoning}`)
+    if (plan.thoughts?.length) thoughts.push(...plan.thoughts)
+    if (plan.goal)             thoughts.push(`🎯 Goal: ${plan.goal}`)
+    if (thoughts.length)       showThoughts(thoughts)
+
+    // Step 2 — invent skill if needed
     if (plan.needsNewSkill && plan.newSkillName) {
       const code = await inventSkill(
         plan.newSkillName,
         plan.newSkillDescription || instruction,
         getAllSkillNames()
       )
-      console.log('Raw skill code:', code)
       if (!code) {
         setStatus('Could not invent skill.')
         state.execution.running = false
@@ -106,28 +107,23 @@ export async function handleInstruction(instruction) {
         return
       }
 
-      // Inject the new skill into the plan
       plan.actions = [{
-        skill: plan.newSkillName,
-        args: {},
-        description: plan.newSkillDescription || instruction
+        skill:       plan.newSkillName,
+        args:        {},
+        description: plan.newSkillDescription || instruction,
       }]
 
-      // Show approval UI after execution
       state.execution.pendingApproval = plan.newSkillName
     }
 
-    // Step 3 — execute each action
+    // Step 3 — execute actions
     state.robot.status = 'executing'
     const ctx = {
       ...buildContext(instruction),
       ...getVisionContextAdditions(),
     }
 
-    console.log('Starting action execution loop. Actions:', plan.actions)
-
     for (const action of plan.actions) {
-      console.log('Action starting:', action)
       const skill = getSkill(action.skill)
       if (!skill) {
         console.warn(`Skill not found: ${action.skill}`)
@@ -136,54 +132,39 @@ export async function handleInstruction(instruction) {
 
       setStatus(`${action.description || action.skill}...`)
       setAgentStatus(`${action.description || action.skill}...`, 'navigating')
-      console.log('Running skill:', action.skill, action.args)
 
-      // Vision mode: resolve target by scanning if needed
-      // Skip for scan skills — they DO the scanning themselves
-      const SCAN_SKILLS = ['scanforobject', 'scan_room', 'scanforobject']
+      const SCAN_SKILLS = ['scanforobject', 'scan_room']
       let target = null
       if (action.args?.target && !SCAN_SKILLS.includes(action.skill.toLowerCase())) {
-        console.log('Resolving target:', action.args.target)
         target = await resolveObject(action.args.target)
-        console.log('Target resolved:', target)
-      } else if (action.args?.target) {
-        console.log('Skipping target pre-resolution for scan skill:', action.skill)
       }
 
-      // Merge args into context
-      const enrichedCtx = {
-        ...ctx,
-        args: action.args || {},
-        target,
-      }
+      const enrichedCtx = { ...ctx, args: action.args || {}, target }
 
       try {
-        console.log('Invoking skill function with enrichedCtx:', enrichedCtx)
         await skill.fn(enrichedCtx)
-        console.log('Skill function finished:', action.skill)
       } catch (e) {
         console.error(`Skill "${action.skill}" threw:`, e)
         remember(instruction, 'fail', e.message)
       }
     }
-    console.log('Action execution loop finished')
 
-    // Step 4 — show approval if new skill
+    // Step 4 — approval UI for new skills
     if (state.execution.pendingApproval) {
       showApprovalUI(state.execution.pendingApproval)
       state.execution.pendingApproval = null
     }
 
-    state.robot.status = 'idle'
+    state.robot.status   = 'idle'
     state.robot.eyeColor = 0x4488ff
-    remember(instruction, 'success', plan.plan)
+    remember(instruction, 'success', plan.plan || plan.goal)
     setStatus('Done.')
     setAgentStatus('Goal completed', 'success')
     setTimeout(() => setAgentStatus(null), 3000)
 
   } catch (e) {
     console.error('Execution error:', e)
-    state.robot.status = 'failed'
+    state.robot.status   = 'failed'
     state.robot.eyeColor = 0xff3333
     remember(instruction, 'fail', e.message)
     setStatus('Something went wrong.')
@@ -194,8 +175,10 @@ export async function handleInstruction(instruction) {
   state.execution.running = false
 }
 
+// ─── Approval UI ──────────────────────────────────────────────────────────────
+
 function showApprovalUI(skillName) {
-  const panel = document.getElementById('approve-panel')
+  const panel  = document.getElementById('approve-panel')
   const nameEl = document.getElementById('approve-skill-name')
   if (!panel || !nameEl) return
 
@@ -212,7 +195,7 @@ function showApprovalUI(skillName) {
     rejectSkill(skillName)
     panel.classList.remove('visible')
     setStatus(`Skill "${skillName}" discarded.`)
-    setAgentStatus(`Skill discarded`, 'error')
+    setAgentStatus('Skill discarded', 'error')
     setTimeout(() => setAgentStatus(null), 3000)
   }
 }

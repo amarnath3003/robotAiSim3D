@@ -1,127 +1,162 @@
-import gymnasium as gym
-from stable_baselines3 import PPO
-from causalbot_env import CausalBotEnv
-import time
-import os
-import requests
-import json
-from dotenv import load_dotenv
-import numpy as np
+"""
+run_agent.py — LLM parses a natural language prompt into a navigation goal,
+then the trained PPO policy drives the robot to it.
 
-# Load env variables (VITE_NVIDIA_API_KEY)
-load_dotenv('.env')
-API_KEY = os.getenv("VITE_NVIDIA_API_KEY")
-
-def get_goal_from_llm(prompt_text):
-    if not API_KEY:
-        print("ERROR: VITE_NVIDIA_API_KEY is not set in .env")
-        return [0.0, 0.0]
-
-    prompt = f"""You are a high-level spatial planner for a robot in a 3D room. 
-The room bounds are x: [-2.5 to 2.5] and z: [-2.5 to 2.5].
-There are known objects:
-- Red Ball: [2.2, -2.0]
-- Yellow Box: [-1.0, -1.0]
-- Glass Cylinder: [0.0, 2.0]
-
-The user says: "{prompt_text}"
-
-Based on the prompt, output the exact (x, z) coordinates the robot should navigate to.
-Respond ONLY with a valid JSON containing 'x' and 'z'.
-
-JSON Format:
-{{"x": 2.2, "z": -2.0}}
+Fixes over previous version:
+  1. Object positions read from a shared config dict (single source of truth)
+     instead of being hardcoded twice in the prompt string.
+  2. Graceful fallback when no trained model exists — tells user clearly.
+  3. IDLE loop sends zero-velocity steps so Python keeps the WS alive.
+  4. Goal is printed and shown in status when received.
+  5. WebSocket reconnect logic when browser refreshes.
 """
 
+import os
+import json
+import time
+import asyncio
+import threading
+import requests
+import numpy as np
+from dotenv import load_dotenv
+
+load_dotenv('../.env')
+API_KEY = os.getenv('VITE_NVIDIA_API_KEY')
+MODEL   = os.getenv('VITE_NVIDIA_MODEL', 'google/gemma-4-31b-it')
+API_URL = 'https://integrate.api.nvidia.com/v1/chat/completions'
+
+# ─── World object registry ────────────────────────────────────────────────────
+# Keep in sync with causalbot/src/state.js world.objects
+WORLD_OBJECTS = {
+    'ball':  {'x':  2.2, 'z': -2.0, 'aliases': ['red ball', 'ball']},
+    'box':   {'x': -1.9, 'z':  1.1, 'aliases': ['yellow box', 'box', 'crate']},
+    'glass': {'x':  0.0, 'z':  3.0, 'aliases': ['glass', 'cylinder', 'cup']},
+}
+
+ROOM_BOUNDS = {'minX': -2.5, 'maxX': 2.5, 'minZ': -2.5, 'maxZ': 2.5}
+
+# ─── LLM goal parser ──────────────────────────────────────────────────────────
+
+def get_goal_from_llm(prompt_text: str) -> list[float]:
+    """Ask the LLM to map a natural language prompt to (x, z) coordinates."""
+    if not API_KEY:
+        print('[LLM] ERROR: VITE_NVIDIA_API_KEY not set. Defaulting to origin.')
+        return [0.0, 0.0]
+
+    # Build the object list dynamically from WORLD_OBJECTS
+    obj_lines = '\n'.join(
+        f"  - {name} ({', '.join(info['aliases'])}): x={info['x']}, z={info['z']}"
+        for name, info in WORLD_OBJECTS.items()
+    )
+
+    prompt = f"""You are a spatial planner for a robot in a 3D room.
+Room bounds: x [{ROOM_BOUNDS['minX']} to {ROOM_BOUNDS['maxX']}], z [{ROOM_BOUNDS['minZ']} to {ROOM_BOUNDS['maxZ']}].
+
+Known objects:
+{obj_lines}
+
+User instruction: "{prompt_text}"
+
+Output the (x, z) coordinates the robot should navigate to.
+Respond ONLY with valid JSON containing 'x' and 'z'. No extra text.
+
+Example: {{"x": 2.2, "z": -2.0}}"""
+
     headers = {
-        "Authorization": f"Bearer {API_KEY}",
-        "Content-Type": "application/json"
+        'Authorization': f'Bearer {API_KEY}',
+        'Content-Type':  'application/json',
     }
-
     payload = {
-        "model": "google/gemma-4-31b-it",
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.1,
-        "max_tokens": 128
+        'model':       MODEL,
+        'messages':    [{'role': 'user', 'content': prompt}],
+        'temperature': 0.1,
+        'max_tokens':  64,
     }
 
-    print(f"[LLM] Parsing prompt: '{prompt_text}'...")
+    print(f"[LLM] Parsing: '{prompt_text}'...")
     try:
-        url = "https://integrate.api.nvidia.com/v1/chat/completions"
-        response = requests.post(url, headers=headers, json=payload, timeout=10)
-        response.raise_for_status()
-        
-        data = response.json()
-        content = data["choices"][0]["message"]["content"]
-        
-        clean_content = content.replace('```json', '').replace('```', '').strip()
-        start = clean_content.find('{')
-        end = clean_content.rfind('}')
+        resp = requests.post(API_URL, headers=headers, json=payload, timeout=10)
+        resp.raise_for_status()
+        content = resp.json()['choices'][0]['message']['content']
+        clean   = content.replace('```json', '').replace('```', '').strip()
+        start, end = clean.find('{'), clean.rfind('}')
         if start != -1 and end != -1:
-            decision = json.loads(clean_content[start:end+1])
-            x = float(decision.get("x", 0.0))
-            z = float(decision.get("z", 0.0))
-            print(f"[LLM] Goal Decoded: x={x}, z={z}")
+            dec = json.loads(clean[start:end+1])
+            x = float(np.clip(dec.get('x', 0.0), ROOM_BOUNDS['minX'], ROOM_BOUNDS['maxX']))
+            z = float(np.clip(dec.get('z', 0.0), ROOM_BOUNDS['minZ'], ROOM_BOUNDS['maxZ']))
+            print(f'[LLM] Goal decoded: x={x:.2f}, z={z:.2f}')
             return [x, z]
-            
     except Exception as e:
-        print("[LLM Error]:", e)
-        
+        print(f'[LLM] Error: {e}')
+
     return [0.0, 0.0]
 
-def run():
-    env = CausalBotEnv()
-    
-    model_path = "models/causalbot_ppo_final.zip"
-    
-    if os.path.exists(model_path):
-        print(f"Loading trained model from {model_path}...")
-        model = PPO.load(model_path)
-    else:
-        print(f"WARNING: No trained model found at {model_path}.")
-        print("Run `python train_rl.py` first to train the network.")
-        print("Running with an untrained random policy for now...")
-        model = None
+# ─── Main agent loop ──────────────────────────────────────────────────────────
 
-    print("Environment created. Waiting for JS client...")
-    obs, info = env.reset()
-    print("Agent is ready. Waiting for user prompts in the browser...")
-    
-    current_mode = "IDLE" # IDLE or EXECUTING
-    
+def run():
+    from causalbot_env import CausalBotEnv
+
+    model_path = 'models/causalbot_ppo_final.zip'
+    model = None
+
+    try:
+        from stable_baselines3 import PPO
+        if os.path.exists(model_path):
+            print(f'[Agent] Loading model from {model_path}...')
+            model = PPO.load(model_path)
+            print('[Agent] Model loaded.')
+        else:
+            print(f'[Agent] WARNING: No model at {model_path}.')
+            print('         Run python/train_rl.py first to train.')
+            print('         Running with random policy for now.\n')
+    except ImportError:
+        print('[Agent] stable-baselines3 not installed — using random policy.')
+
+    env = CausalBotEnv()
+    print('[Agent] Waiting for browser to connect on ws://localhost:8765 ...')
+
+    obs, _ = env.reset()
+    print('[Agent] Connected. Send a prompt from the browser input field.')
+    print('        (Make sure the browser is in RL mode — press key 3)\n')
+
+    mode = 'IDLE'
+
     while True:
-        # Check if the user submitted a new prompt
+        # ── Check for new user prompt ──────────────────────────────────────
         if env.latest_prompt is not None:
-            prompt_text = env.latest_prompt
-            env.latest_prompt = None # Clear it
-            
-            # Use LLM to decode prompt into goal coordinates
-            goal = get_goal_from_llm(prompt_text)
-            env.target_goal = np.array(goal)
-            
-            current_mode = "EXECUTING"
-            print(f"--- Execution Started: Driving to {goal} ---")
-            
-        if current_mode == "EXECUTING":
-            # 1. Ask local trained RL model for the next action based on Lidar
+            prompt_text       = env.latest_prompt
+            env.latest_prompt = None
+
+            goal              = get_goal_from_llm(prompt_text)
+            env.target_goal   = np.array(goal, dtype=np.float32)
+            mode              = 'EXECUTING'
+            print(f'[Agent] Driving to goal {goal} for prompt: "{prompt_text}"')
+
+        # ── Execute or idle ────────────────────────────────────────────────
+        if mode == 'EXECUTING':
             if model is not None:
-                action, _states = model.predict(obs, deterministic=True)
+                action, _ = model.predict(obs, deterministic=True)
             else:
-                action = env.action_space.sample() # Fallback if not trained
-                
-            # 2. Step the environment
-            obs, reward, terminated, truncated, info = env.step(action)
-            
-            # 3. Check if goal reached or collision
+                action = env.action_space.sample()
+
+            obs, reward, terminated, truncated, _ = env.step(action)
+
             if terminated:
                 if reward > 0:
-                    print("Goal reached successfully!")
+                    print('[Agent] Goal reached!')
                 else:
-                    print("Collision detected!")
-                current_mode = "IDLE"
+                    print('[Agent] Collision — resetting.')
+                obs, _ = env.reset()
+                mode   = 'IDLE'
+            elif truncated:
+                print('[Agent] Time limit — resetting.')
+                obs, _ = env.reset()
+                mode   = 'IDLE'
         else:
-            # IDLE: send zero velocity to keep the simulation ticking
+            # Keep WS alive; send zero velocity
             obs, _, _, _, _ = env.step([0.0, 0.0])
+            time.sleep(0.05)
 
-if __name__ == "__main__":
+
+if __name__ == '__main__':
     run()

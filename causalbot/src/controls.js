@@ -5,7 +5,7 @@ const keys = {
   a: false,
   s: false,
   d: false,
-  space: false
+  space: false,
 }
 
 export function initControls() {
@@ -15,14 +15,24 @@ export function initControls() {
     if (key === 'a') keys.a = true
     if (key === 's') keys.s = true
     if (key === 'd') keys.d = true
-    if (key === ' ') {
-      keys.space = true
-      e.preventDefault() // prevent page scroll
-    }
+    if (key === ' ') { keys.space = true; e.preventDefault() }
 
-    // Toggle Mode
-    if (key === '1') state.controlMode = 'ai'
-    if (key === '2') state.controlMode = 'debug'
+    // Mode switching
+    // 1 = AI (LLM instruction mode)
+    // 2 = Debug (manual WASD control)
+    // 3 = RL (Python/Gymnasium bridge)
+    if (key === '1') {
+      state.controlMode = 'ai'
+      console.log('[Controls] Mode → AI')
+    }
+    if (key === '2') {
+      state.controlMode = 'debug'
+      console.log('[Controls] Mode → Debug')
+    }
+    if (key === '3') {
+      state.controlMode = 'rl'
+      console.log('[Controls] Mode → RL')
+    }
   })
 
   window.addEventListener('keyup', (e) => {

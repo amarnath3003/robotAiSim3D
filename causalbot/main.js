@@ -6,7 +6,7 @@ import { initUI } from './src/ui.js'
 import { initControls, getKeys } from './src/controls.js'
 import { getGridDebug } from './src/pathfinder.js'
 import { state } from './src/state.js'
-import { initRL, updateRL, flushRLState } from './src/rl.js'
+import { initRL, updateRL, flushRLState, invalidateRLCache } from './src/rl.js'
 import { togglePerceptionMode } from './src/perception/perceptionMode.js'
 import { invalidateVisionCache } from './src/perception/visionSensor.js'
 import { initMaze, updateMaze, getGoalPosition, getStartPosition } from './src/maze.js'
@@ -16,14 +16,15 @@ window.__togglePerception = togglePerceptionMode
 
 // ─── Maze mode: activated via ?mode=maze in URL ───────────────────────────────
 const MAZE_MODE = new URLSearchParams(window.location.search).get('mode') === 'maze'
-window.MAZE_MODE = MAZE_MODE
-window.getMazeGoal  = () => MAZE_MODE ? getGoalPosition()  : null
-window.getMazeStart = () => MAZE_MODE ? getStartPosition() : null
+window.MAZE_MODE     = MAZE_MODE
+window.getMazeGoal   = () => MAZE_MODE ? getGoalPosition()  : null
+window.getMazeStart  = () => MAZE_MODE ? getStartPosition() : null
 
 const clock = new THREE.Clock()
 
 async function init() {
   console.log(`Booting CausalBot... [${MAZE_MODE ? 'MAZE MODE' : 'ROOM MODE'}]`)
+
   await initScene(MAZE_MODE)
   await initRobot()
   await initDebugRobot()
@@ -35,32 +36,40 @@ async function init() {
     addMazeWalls(wallSpecs)
     console.log(`[Main] Maze ready — ${wallSpecs.length} wall colliders added`)
 
-    // Override robot start position to maze center (higher up so it drops in)
+    // Position AI robot at maze start, dropping in from above
     const start = getStartPosition()
+    state.robot.position[0] = start.x
+    state.robot.position[1] = 1.5
+    state.robot.position[2] = start.z
     if (state.robot._body) {
       state.robot._body.setNextKinematicTranslation({ x: start.x, y: 1.5, z: start.z })
     }
-    state.robot.position = [start.x, 1.5, start.z]
 
-    // Hide debug robot in maze mode
+    // Hide debug robot — not used in maze mode
     const debugMesh = state.scene.three.getObjectByName('debugRobot')
     if (debugMesh) debugMesh.visible = false
     if (state.debugRobot._body) {
       state.debugRobot._body.setTranslation({ x: 0, y: -100, z: 0 }, true)
     }
 
-    // Show maze goal on HUD
     const goal = getGoalPosition()
     console.log(`[Main] Goal at (${goal.x.toFixed(2)}, ${goal.z.toFixed(2)})`)
+
+    // In maze mode, default to RL control immediately
+    state.controlMode = 'rl'
   }
 
   initSkillRegistry()
   initControls()
   initUI()
+
+  // Invalidate both lidar and vision caches after all meshes are in scene
+  invalidateVisionCache()
+  invalidateRLCache()
+
+  // Start RL WebSocket — will switch controlMode to 'rl' only when Python connects
   initRL()
 
-  // After all meshes are in scene, build vision raycast cache
-  invalidateVisionCache()
   console.log('All systems ready.')
   animate()
 }
@@ -68,42 +77,27 @@ async function init() {
 function animate() {
   requestAnimationFrame(animate)
   const delta = clock.getDelta()
-  const keys = getKeys()
-  const targetDelta = 1 / 60
-  const steps = state.controlMode === 'rl' ? 10 : 1
+  const keys  = getKeys()
 
-  for (let i = 0; i < steps; i++) {
-    updateRobot(targetDelta)
-    updateDebugRobot(targetDelta)
-    stepPhysics(targetDelta)
-    stepDebugRobotPhysics(keys, targetDelta)
-    updateRL(targetDelta)
+  // In RL mode run multiple physics substeps per frame for faster training
+  const substeps     = state.controlMode === 'rl' ? 10 : 1
+  const substepDelta = 1 / 60  // fixed timestep regardless of frame rate
+
+  for (let i = 0; i < substeps; i++) {
+    updateRobot(substepDelta)
+    updateDebugRobot(substepDelta)
+    stepPhysics(substepDelta)
+    stepDebugRobotPhysics(keys, substepDelta)
+    updateRL(substepDelta)
     applyRobotCollisions()
   }
 
+  // Send RL state to Python once per rendered frame (after all substeps)
   flushRLState()
 
   if (MAZE_MODE) updateMaze(delta)
 
   renderScene()
-}
-
-// Optional: visualise pathfinding grid in Three.js (dev only)
-function visualiseGrid() {
-  const { grid, cols, rows, cellSize, halfExtent } = getGridDebug()
-  const geo = new THREE.PlaneGeometry(cellSize * 0.85, cellSize * 0.85)
-  geo.rotateX(-Math.PI / 2)
-
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const blocked = grid[r * cols + c] === 1
-      if (!blocked) continue
-      const mat  = new THREE.MeshBasicMaterial({ color: 0xff2222, transparent: true, opacity: 0.25 })
-      const mesh = new THREE.Mesh(geo, mat)
-      mesh.position.set(c * cellSize - halfExtent, 0.02, r * cellSize - halfExtent)
-      state.scene.three.add(mesh)
-    }
-  }
 }
 
 init().catch(err => console.error('Boot failed:', err))
