@@ -106,6 +106,24 @@ class CausalBotEnv(gym.Env):
                         self.latest_prompt = msg.get('text', '')
                     print(f'[Env] Prompt received: "{self.latest_prompt}"')
 
+                elif t == 'goal_override':
+                    # Dashboard set goal directly (bypasses LLM)
+                    x = float(msg.get('x', 0.0))
+                    z = float(msg.get('z', 0.0))
+                    with self._lock:
+                        self.target_goal = np.array([x, z], dtype=np.float32)
+                    print(f'[Env] Goal override from dashboard: ({x:.2f}, {z:.2f})')
+
+                elif t == 'params':
+                    # Dashboard updated env parameters
+                    if 'max_steps' in msg:
+                        with self._lock:
+                            self.max_steps = int(msg['max_steps'])
+                        print(f'[Env] max_steps → {self.max_steps}')
+                    if msg.get('reset'):
+                        self._reset_event.clear()
+                        self._send_telemetry(mode='IDLE')
+
         except Exception as e:
             print(f'[Env] Connection closed: {e}')
         finally:
@@ -142,6 +160,22 @@ class CausalBotEnv(gym.Env):
         with self._lock:
             self._obs      = np.array([dist, angle] + lidar, dtype=np.float32)
             self._raw_obs  = raw
+
+    def _send_telemetry(self, reward=None, mode=None):
+        """Push live stats back to the JS dashboard."""
+        with self._lock:
+            gx, gz = float(self.target_goal[0]), float(self.target_goal[1])
+            dist   = float(self._obs[0]) if len(self._obs) > 0 else None
+        payload = {
+            'type':   'telemetry',
+            'goal':   {'x': gx, 'z': gz},
+            'mode':   mode or 'EXECUTING',
+        }
+        if reward is not None:
+            payload['reward'] = round(float(reward), 4)
+        if dist is not None:
+            payload['dist']   = round(dist, 3)
+        self._send(payload)
 
     # ── Gymnasium API ─────────────────────────────────────────────────────────
 
@@ -234,6 +268,9 @@ class CausalBotEnv(gym.Env):
 
         if self.current_step >= self.max_steps:
             truncated = True
+
+        # Push live stats to JS dashboard
+        self._send_telemetry(reward=reward, mode='IDLE' if (terminated or truncated) else 'EXECUTING')
 
         return obs, reward, terminated, truncated, {}
 

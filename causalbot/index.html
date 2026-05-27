@@ -292,6 +292,230 @@
         color: #5eead4;
         background: rgba(29, 158, 117, 0.07);
       }
+
+      /* ─── RL Dashboard ───────────────────────────────────────────────────── */
+      #rl-dashboard {
+        position: absolute;
+        top: 60px;
+        right: 16px;
+        width: 248px;
+        background: rgba(8, 8, 16, 0.88);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 16px;
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        pointer-events: all;
+        z-index: 200;
+        user-select: none;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+      }
+
+      .rld-header { display: flex; flex-direction: column; gap: 4px; }
+      .rld-title-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .rld-icon  { font-size: 14px; }
+      .rld-title {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #e2e8f0;
+        flex: 1;
+      }
+      .rld-conn-badge {
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        padding: 2px 8px;
+        border-radius: 20px;
+        border: 1px solid #4b5563;
+        color: #6b7280;
+        background: rgba(255,255,255,0.03);
+        transition: all 0.3s;
+      }
+      .rld-conn-online {
+        border-color: #4ade80 !important;
+        color: #4ade80 !important;
+        background: rgba(74, 222, 128, 0.08) !important;
+        box-shadow: 0 0 8px rgba(74,222,128,0.2);
+      }
+      .rld-mode-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 2px;
+      }
+      .rld-mode-label {
+        font-size: 9px;
+        letter-spacing: 0.1em;
+        color: #4b5563;
+      }
+      .rld-mode-val {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        color: #888;
+        transition: color 0.3s;
+      }
+
+      .rld-section {
+        border-top: 1px solid rgba(255,255,255,0.05);
+        padding-top: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .rld-section-title {
+        font-size: 8px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #4b5563;
+        margin-bottom: 2px;
+      }
+      .rld-kv-row {
+        display: flex;
+        align-items: baseline;
+        gap: 4px;
+        flex-wrap: wrap;
+      }
+      .rld-key {
+        font-size: 8px;
+        letter-spacing: 0.1em;
+        color: #6b7280;
+        text-transform: uppercase;
+      }
+      .rld-val {
+        font-size: 11px;
+        font-family: 'JetBrains Mono', 'Courier New', monospace;
+        color: #e2e8f0;
+        min-width: 38px;
+        transition: color 0.2s;
+      }
+
+      /* Goal inputs */
+      .rld-goal-inputs {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+        margin-top: 2px;
+      }
+      .rld-coord-input {
+        width: 60px;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 6px;
+        color: #e2e8f0;
+        font-size: 11px;
+        font-family: monospace;
+        padding: 4px 6px;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+      .rld-coord-input:focus { border-color: #38bdf8; }
+
+      /* Action bars */
+      .rld-action-bars { display: flex; flex-direction: column; gap: 4px; }
+      .rld-bar-wrap    { display: flex; align-items: center; gap: 6px; }
+      .rld-bar-label   { font-size: 9px; color: #6b7280; width: 18px; text-align: right; }
+      .rld-bar-track {
+        flex: 1;
+        height: 6px;
+        background: rgba(255,255,255,0.07);
+        border-radius: 3px;
+        overflow: hidden;
+        position: relative;
+      }
+      .rld-bar-center::after {
+        content: '';
+        position: absolute;
+        left: 50%;
+        top: 0; bottom: 0;
+        width: 1px;
+        background: rgba(255,255,255,0.15);
+      }
+      .rld-bar-fill {
+        height: 100%;
+        border-radius: 3px;
+        transition: width 0.08s, left 0.08s;
+        position: absolute;
+        left: 0;
+      }
+      .rld-bar-linear  { background: #4ade80; }
+      .rld-bar-angular { background: #f59e0b; }
+
+      /* Lidar canvas */
+      #rld-lidar-canvas {
+        width: 100%;
+        height: 80px;
+        border-radius: 6px;
+        background: rgba(255,255,255,0.02);
+        border: 1px solid rgba(255,255,255,0.05);
+      }
+
+      /* Step progress bar */
+      .rld-step-bar-wrap  { margin-top: 4px; }
+      .rld-step-bar-track {
+        height: 4px;
+        background: rgba(255,255,255,0.06);
+        border-radius: 2px;
+        overflow: hidden;
+        position: relative;
+      }
+      .rld-step-bar-fill {
+        height: 100%;
+        border-radius: 2px;
+        transition: width 0.15s, background 0.3s;
+      }
+
+      /* Param row */
+      .rld-param-row   { display: flex; align-items: center; gap: 6px; }
+      .rld-param-label { font-size: 9px; color: #6b7280; width: 60px; }
+      .rld-param-input {
+        flex: 1;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 6px;
+        color: #e2e8f0;
+        font-size: 11px;
+        font-family: monospace;
+        padding: 4px 6px;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+      .rld-param-input:focus { border-color: #a78bfa; }
+
+      /* Buttons */
+      .rld-btn {
+        padding: 5px 10px;
+        border-radius: 8px;
+        border: 1px solid rgba(255,255,255,0.12);
+        background: rgba(255,255,255,0.04);
+        color: #cbd5e1;
+        font-family: monospace;
+        font-size: 10px;
+        cursor: pointer;
+        transition: background 0.15s, border-color 0.15s;
+        white-space: nowrap;
+      }
+      .rld-btn:hover  { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.25); }
+      .rld-btn-rl     { border-color: #a78bfa; color: #a78bfa; }
+      .rld-btn-rl:hover { background: rgba(167,139,250,0.15); }
+      .rld-btn-sm     { font-size: 9px; padding: 4px 8px; }
+
+      .rld-btn-row {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+      }
+      .rld-controls { border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px; }
+
     </style>
   </head>
   <body>
@@ -313,7 +537,10 @@
       ">🧠 Omniscient</div>
       <div id="status-bar">Ready</div>
       <div id="memory-log"></div>
-      <div id="skill-log"></div>
+      <div id="skill-log" style="top:16px;right:16px;"></div>
+
+      <!-- RL Dashboard -->
+      <div id="rl-dashboard"></div>
 
       <div id="approve-panel">
         <div id="approve-title">New skill invented</div>

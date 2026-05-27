@@ -37,6 +37,21 @@ let _stepReady      = false
 let _connected      = false
 const _raycaster    = new THREE.Raycaster()
 
+// ─── Telemetry (read by RL dashboard) ────────────────────────────────────────
+const _telemetry = {
+  connected:    false,
+  mode:         'IDLE',        // 'IDLE' | 'EXECUTING'
+  goal:         { x: null, z: null },
+  lastAction:   { linear: 0, angular: 0 },
+  lastLidar:    Array(11).fill(5.0),
+  stepCount:    0,
+  totalSteps:   0,
+  lastReward:   0,
+  robotPos:     { x: 0, z: 0 },
+  distToGoal:   null,
+  maxSteps:     1000,
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export function initRL() {
@@ -72,11 +87,16 @@ export function flushRLState() {
   if (_ws?.readyState !== WebSocket.OPEN) return
 
   // Clear BEFORE send — fast Python reply must not see stale action
-  const snapshot   = _pendingAction
-  _pendingAction   = null
-  _stepReady       = false
+  _pendingAction = null
+  _stepReady     = false
 
-  _send({ type: 'state', observation: _buildObservation() })
+  const obs = _buildObservation()
+  _telemetry.stepCount++
+  _telemetry.totalSteps++
+  _telemetry.robotPos  = { x: obs[0], z: obs[1] }
+  _telemetry.lastLidar = obs.slice(3)
+
+  _send({ type: 'state', observation: obs })
 }
 
 export function sendPromptRL(text) {
@@ -100,6 +120,27 @@ export function isRLConnected() {
   return _connected
 }
 
+export function getRLTelemetry() {
+  return _telemetry
+}
+
+/** Send a goal directly from the dashboard (bypasses LLM). */
+export function setRLGoalOverride(x, z) {
+  if (_ws?.readyState === WebSocket.OPEN) {
+    _send({ type: 'goal_override', x: parseFloat(x), z: parseFloat(z) })
+    _telemetry.goal = { x: parseFloat(x), z: parseFloat(z) }
+    _telemetry.mode = 'EXECUTING'
+  }
+}
+
+/** Push updated env params to Python. */
+export function setRLParams(params) {
+  if (_ws?.readyState === WebSocket.OPEN) {
+    _send({ type: 'params', ...params })
+  }
+  if (params.max_steps !== undefined) _telemetry.maxSteps = params.max_steps
+}
+
 // ─── Internal ─────────────────────────────────────────────────────────────────
 
 function _connect() {
@@ -108,6 +149,8 @@ function _connect() {
   _ws.onopen = () => {
     _connected   = true
     _lidarCache  = null
+    _telemetry.connected = true
+    _telemetry.stepCount = 0
     console.log('[RL] Python connected → switching to RL mode')
     state.controlMode = 'rl'
 
@@ -133,13 +176,22 @@ function _connect() {
 
     if (msg.type === 'reset') {
       _handleReset()
+      _telemetry.mode = 'IDLE'
+      _telemetry.stepCount = 0
     } else if (msg.type === 'action' && state.controlMode === 'rl') {
       const [lin, ang] = msg.action
-      _pendingAction = {
-        linear:  Math.max(-MAX_LINEAR,  Math.min(MAX_LINEAR,  lin)),
-        angular: Math.max(-MAX_ANGULAR, Math.min(MAX_ANGULAR, ang)),
-      }
+      const clampedLin = Math.max(-MAX_LINEAR,  Math.min(MAX_LINEAR,  lin))
+      const clampedAng = Math.max(-MAX_ANGULAR, Math.min(MAX_ANGULAR, ang))
+      _pendingAction = { linear: clampedLin, angular: clampedAng }
+      _telemetry.lastAction = { linear: clampedLin, angular: clampedAng }
+      _telemetry.mode = 'EXECUTING'
       _stepReady = false
+    } else if (msg.type === 'telemetry') {
+      // Python pushes back reward + goal info
+      if (msg.goal)   _telemetry.goal       = msg.goal
+      if (msg.reward !== undefined) _telemetry.lastReward = msg.reward
+      if (msg.dist   !== undefined) _telemetry.distToGoal = msg.dist
+      if (msg.mode)  _telemetry.mode = msg.mode
     }
   }
 
@@ -148,6 +200,8 @@ function _connect() {
     _connected     = false
     _pendingAction = null
     _stepReady     = false
+    _telemetry.connected = false
+    _telemetry.mode = 'IDLE'
 
     if (wasConnected) {
       console.log('[RL] Python disconnected → reverting to AI mode')
@@ -197,8 +251,11 @@ function _handleReset() {
 }
 
 function _buildObservation() {
-  const p = getRobotPos()
-  return [p.x, p.z, state.robot.rotation || 0, ...castLidar()]
+  const p     = getRobotPos()
+  const lidar = castLidar()
+  _telemetry.robotPos  = { x: p.x, z: p.z }
+  _telemetry.lastLidar = lidar
+  return [p.x, p.z, state.robot.rotation || 0, ...lidar]
 }
 
 // ─── Lidar ────────────────────────────────────────────────────────────────────
