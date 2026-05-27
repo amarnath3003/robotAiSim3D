@@ -143,8 +143,10 @@ function _buildRLDashboard() {
     <div class="rld-section">
       <div class="rld-section-title">LAST ACTION</div>
       <div class="rld-kv-row">
-        <span class="rld-key">LINEAR</span><span class="rld-val" id="rld-lin">0.00</span>
-        <span class="rld-key" style="margin-left:12px">ANGULAR</span><span class="rld-val" id="rld-ang">0.00</span>
+        <span class="rld-key">LIN</span><span class="rld-val" id="rld-lin">0.00</span>
+        <span class="rld-key" style="margin-left:8px">ROT</span><span class="rld-val" id="rld-ang">0.00</span>
+        <span class="rld-key" style="margin-left:8px">ARM</span><span class="rld-val" id="rld-arm">0.00</span>
+        <span class="rld-key" style="margin-left:8px">JMP</span><span class="rld-val" id="rld-jmp">0</span>
       </div>
       <div class="rld-action-bars">
         <div class="rld-bar-wrap">
@@ -155,6 +157,12 @@ function _buildRLDashboard() {
           <div class="rld-bar-label">rot</div>
           <div class="rld-bar-track rld-bar-center">
             <div class="rld-bar-fill rld-bar-angular" id="rld-bar-ang"></div>
+          </div>
+        </div>
+        <div class="rld-bar-wrap">
+          <div class="rld-bar-label">arm</div>
+          <div class="rld-bar-track rld-bar-center">
+            <div class="rld-bar-fill" id="rld-bar-arm" style="background:#c084fc"></div>
           </div>
         </div>
       </div>
@@ -168,12 +176,25 @@ function _buildRLDashboard() {
     <div class="rld-section">
       <div class="rld-section-title">EPISODE</div>
       <div class="rld-kv-row">
-        <span class="rld-key">STEP</span><span class="rld-val" id="rld-step">0</span>
-        <span class="rld-key" style="margin-left:12px">TOTAL</span><span class="rld-val" id="rld-total">0</span>
-        <span class="rld-key" style="margin-left:12px">REWARD</span><span class="rld-val" id="rld-reward">—</span>
+        <span class="rld-key">EP #</span><span class="rld-val" id="rld-ep">0</span>
+        <span class="rld-key" style="margin-left:8px">STEP</span><span class="rld-val" id="rld-step">0</span>
+        <span class="rld-key" style="margin-left:8px">REWARD</span><span class="rld-val" id="rld-reward">—</span>
       </div>
       <div class="rld-step-bar-wrap">
         <div class="rld-step-bar-track"><div class="rld-step-bar-fill" id="rld-step-fill"></div></div>
+      </div>
+    </div>
+
+    <div class="rld-section">
+      <div class="rld-section-title">SIMULATION OF DEATH</div>
+      <div class="rld-kv-row">
+        <span class="rld-key">☠ DEATHS</span><span class="rld-val" id="rld-deaths" style="color:#f87171">0</span>
+        <span class="rld-key" style="margin-left:8px">✓ WIN</span><span class="rld-val" id="rld-succ" style="color:#4ade80">0</span>
+        <span class="rld-key" style="margin-left:8px">RATE</span><span class="rld-val" id="rld-rate">—</span>
+      </div>
+      <div class="rld-kv-row" style="margin-top:4px">
+        <span class="rld-key">EP REWARD</span><span class="rld-val" id="rld-ep-reward">0.000</span>
+        <span class="rld-key" style="margin-left:8px">TOTAL STEPS</span><span class="rld-val" id="rld-total">0</span>
       </div>
     </div>
 
@@ -264,30 +285,39 @@ function _tickRLDashboard() {
   _setText('rld-gz', t.goal.z !== null ? t.goal.z.toFixed(3) : '—')
   _setText('rld-dist', t.distToGoal !== null ? t.distToGoal.toFixed(2) + ' m' : '—')
 
-  // Last action
+  // Last action — 4-dim
   const lin = t.lastAction.linear ?? 0
   const ang = t.lastAction.angular ?? 0
-  _setText('rld-lin', lin.toFixed(3))
-  _setText('rld-ang', ang.toFixed(3))
+  const arm = t.lastAction.armRot ?? 0
+  const jmp = t.lastAction.jump ?? 0
+  _setText('rld-lin', lin.toFixed(2))
+  _setText('rld-ang', ang.toFixed(2))
+  _setText('rld-arm', arm.toFixed(2))
+  _setText('rld-jmp', jmp > 0.5 ? '↑' : '—')
 
   const barLin = document.getElementById('rld-bar-lin')
   if (barLin) barLin.style.width = (Math.abs(lin) / 2.5 * 100).toFixed(1) + '%'
 
   const barAng = document.getElementById('rld-bar-ang')
   if (barAng) {
-    const pct = (ang / 2.0 + 1) / 2  // -2..2 → 0..1
-    const left = pct >= 0.5
-      ? '50%'
-      : (pct * 100).toFixed(1) + '%'
-    const width = Math.abs(pct - 0.5) * 100 + '%'
-    barAng.style.left  = left
-    barAng.style.width = width
+    const pct = (ang / 2.0 + 1) / 2
+    barAng.style.left  = pct >= 0.5 ? '50%' : (pct * 100).toFixed(1) + '%'
+    barAng.style.width = Math.abs(pct - 0.5) * 100 + '%'
     barAng.style.background = ang >= 0 ? '#f59e0b' : '#818cf8'
   }
 
-  // Episode
-  _setText('rld-step',   t.stepCount)
-  _setText('rld-total',  t.totalSteps)
+  const barArm = document.getElementById('rld-bar-arm')
+  if (barArm) {
+    const pct = (arm / Math.PI + 1) / 2
+    barArm.style.left  = pct >= 0.5 ? '50%' : (pct * 100).toFixed(1) + '%'
+    barArm.style.width = Math.abs(pct - 0.5) * 100 + '%'
+  }
+
+  // Episode stats
+  _setText('rld-ep',    t.episode)
+  _setText('rld-step',  t.stepCount)
+  _setText('rld-total', t.totalSteps)
+
   const rewardEl = document.getElementById('rld-reward')
   if (rewardEl) {
     const r = t.lastReward
@@ -295,14 +325,34 @@ function _tickRLDashboard() {
     rewardEl.style.color = r > 0 ? '#4ade80' : r < 0 ? '#f87171' : '#888'
   }
 
+  // Simulation of Death stats
+  _setText('rld-deaths', t.deaths)
+  _setText('rld-succ',   t.successes)
+  const total = t.deaths + t.successes
+  const rateEl = document.getElementById('rld-rate')
+  if (rateEl) {
+    if (total > 0) {
+      const rate = (t.successes / total * 100).toFixed(0) + '%'
+      rateEl.textContent  = rate
+      rateEl.style.color  = t.successes / total > 0.5 ? '#4ade80' : t.successes / total > 0.2 ? '#f59e0b' : '#f87171'
+    } else {
+      rateEl.textContent = '—'
+    }
+  }
+
+  const epRewEl = document.getElementById('rld-ep-reward')
+  if (epRewEl) {
+    const er = t.epReward ?? 0
+    epRewEl.textContent = (er > 0 ? '+' : '') + er.toFixed(2)
+    epRewEl.style.color = er > 0 ? '#4ade80' : er < -5 ? '#f87171' : '#888'
+  }
+
   // Step progress bar
   const fill = document.getElementById('rld-step-fill')
   if (fill) {
     const pct = Math.min(t.stepCount / t.maxSteps, 1) * 100
     fill.style.width = pct.toFixed(1) + '%'
-    fill.style.background = pct > 80
-      ? '#f87171'
-      : pct > 50 ? '#f59e0b' : '#4ade80'
+    fill.style.background = pct > 80 ? '#f87171' : pct > 50 ? '#f59e0b' : '#4ade80'
   }
 
   // Lidar radar

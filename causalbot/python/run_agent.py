@@ -34,11 +34,22 @@ API_KEY = os.getenv('VITE_NVIDIA_API_KEY')
 MODEL   = os.getenv('VITE_NVIDIA_MODEL', 'google/gemma-4-31b-it')
 API_URL = 'https://integrate.api.nvidia.com/v1/chat/completions'
 
-# ─── World objects — keep in sync with src/state.js ─────────────────────────
+# ─── World objects + named locations ─────────────────────────────────────────
+# Keep object positions in sync with src/state.js world.objects
 WORLD_OBJECTS = {
-    'ball':  {'x':  2.2, 'z': -2.0, 'aliases': ['ball', 'red ball', 'sphere']},
-    'box':   {'x': -1.9, 'z':  1.1, 'aliases': ['box', 'crate', 'yellow box', 'cube']},
-    'glass': {'x':  0.0, 'z':  3.0, 'aliases': ['glass', 'cup', 'cylinder', 'bottle']},
+    'ball':         {'x':  2.2,  'z': -2.0, 'aliases': ['ball', 'red ball', 'sphere', 'orb']},
+    'box':          {'x': -1.9,  'z':  1.1, 'aliases': ['box', 'crate', 'yellow box', 'cube', 'block']},
+    'glass':        {'x':  0.0,  'z':  3.0, 'aliases': ['glass', 'cup', 'cylinder', 'bottle', 'cup']},
+    # Named room positions
+    'center':       {'x':  0.0,  'z':  0.0, 'aliases': ['center', 'middle', 'origin']},
+    'front_center': {'x':  0.0,  'z':  2.0, 'aliases': ['front', 'forward']},
+    'back_center':  {'x':  0.0,  'z': -2.0, 'aliases': ['back', 'behind', 'rear']},
+    'left_wall':    {'x': -2.2,  'z':  0.0, 'aliases': ['left', 'left wall', 'left side']},
+    'right_wall':   {'x':  2.2,  'z':  0.0, 'aliases': ['right', 'right wall', 'right side']},
+    'front_left':   {'x': -2.0,  'z':  2.0, 'aliases': ['front left', 'left corner', 'top left']},
+    'front_right':  {'x':  2.0,  'z':  2.0, 'aliases': ['front right', 'right corner', 'top right']},
+    'back_left':    {'x': -2.0,  'z': -2.0, 'aliases': ['back left', 'bottom left']},
+    'back_right':   {'x':  2.0,  'z': -2.0, 'aliases': ['back right', 'bottom right']},
 }
 ROOM_BOUNDS = {'minX': -2.5, 'maxX': 2.5, 'minZ': -2.5, 'maxZ': 2.5}
 
@@ -47,7 +58,8 @@ ROOM_BOUNDS = {'minX': -2.5, 'maxX': 2.5, 'minZ': -2.5, 'maxZ': 2.5}
 
 def parse_goal(prompt_text: str) -> tuple[float, float]:
     """
-    Use the LLM to map a natural language prompt to (x, z) room coordinates.
+    Use the LLM to map any natural language navigation instruction to (x, z) coordinates.
+    Handles: named objects, room areas, corners, walls, and free-form descriptions.
     Runs in its own thread so it never blocks the step loop.
     Falls back to origin on any failure.
     """
@@ -56,25 +68,27 @@ def parse_goal(prompt_text: str) -> tuple[float, float]:
         return 0.0, 0.0
 
     obj_lines = '\n'.join(
-        f"  - {name} (also: {', '.join(info['aliases'])}): "
-        f"position x={info['x']}, z={info['z']}"
+        f"  - {name}: x={info['x']}, z={info['z']}  (also called: {', '.join(info['aliases'])})"
         for name, info in WORLD_OBJECTS.items()
     )
 
-    prompt = f"""You are a spatial planner for a robot arm simulation.
-Room is bounded x=[{ROOM_BOUNDS['minX']}, {ROOM_BOUNDS['maxX']}], z=[{ROOM_BOUNDS['minZ']}, {ROOM_BOUNDS['maxZ']}].
+    prompt = f"""You are a spatial navigator for a 3D robot simulation.
+The robot can perform: move forward, rotate left/right, rotate arms (180°), jump.
+Room bounds: x=[{ROOM_BOUNDS['minX']}, {ROOM_BOUNDS['maxX']}], z=[{ROOM_BOUNDS['minZ']}, {ROOM_BOUNDS['maxZ']}].
 
-Objects in the room:
+Known objects and named locations:
 {obj_lines}
 
-User instruction: "{prompt_text}"
+User command: "{prompt_text}"
 
-Output the (x, z) world coordinates the robot should navigate TO.
-If the instruction refers to a known object, use that object's coordinates.
-If it refers to a room area (corner, centre, etc.), estimate coordinates.
+Determine the (x, z) world coordinates the robot should navigate TO.
+- If the command mentions a known object or location, use those coordinates.
+- If it mentions a direction or room area not listed, estimate reasonable coordinates.
+- If it's ambiguous, navigate to the most likely target.
 
 Respond with ONLY a JSON object, no explanation:
 {{"x": <number>, "z": <number>}}"""
+
 
     headers = {
         'Authorization': f'Bearer {API_KEY}',
@@ -205,9 +219,8 @@ class Agent:
                     self._mode = 'IDLE'
 
             else:
-                # IDLE: send zero velocity to keep the WebSocket alive
-                # This also keeps _state_event cycling so new prompts are noticed
-                obs, _, _, _, _ = self.env.step([0.0, 0.0])
+                # IDLE: send zero action (4-dim) to keep the WebSocket alive
+                obs, _, _, _, _ = self.env.step([0.0, 0.0, 0.0, 0.0])
                 time.sleep(0.016)   # ~60 fps idle
 
 

@@ -195,6 +195,42 @@ export function addMazeWalls(walls) {
   console.log(`[Physics] Added ${walls.length} maze wall colliders`)
 }
 
+/**
+ * Add dynamic RL episode walls (one set per episode, replaced on reset).
+ * walls: Array of { x, z, w, d, h }  (centre pos + full dimensions)
+ * Returns array of Rapier rigid body handles for later removal.
+ */
+export function addRLWalls(walls) {
+  if (!world) return []
+  const bodies = []
+  for (const w of walls) {
+    const hw = w.w / 2, hh = w.h / 2, hd = w.d / 2
+    const body = world.createRigidBody(
+      RAPIER.RigidBodyDesc.fixed().setTranslation(w.x, hh, w.z)
+    )
+    world.createCollider(
+      RAPIER.ColliderDesc.cuboid(hw, hh, hd)
+        .setFriction(0.5)
+        .setRestitution(0.05),
+      body
+    )
+    bodies.push(body)
+  }
+  return bodies
+}
+
+/**
+ * Remove a set of previously added RL episode walls.
+ * bodies: array returned by addRLWalls()
+ */
+export function removeRLWalls(bodies) {
+  if (!world || !bodies) return
+  for (const body of bodies) {
+    try { world.removeRigidBody(body) } catch (_) {}
+  }
+}
+
+
 // ─── Setup a dynamic scene object ────────────────────────────────────────────
 function setupObject(id, cfg) {
   const obj = state.world.objects[id]
