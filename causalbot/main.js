@@ -79,18 +79,16 @@ function animate() {
   const delta = clock.getDelta()
   const keys  = getKeys()
 
-  // In RL mode run multiple physics substeps per frame for faster training
-  const substeps     = state.controlMode === 'rl' ? 10 : 1
-  const substepDelta = 1 / 60  // fixed timestep regardless of frame rate
+  // C3 fix: 1 substep per frame — physics.js has its own fixed-step accumulator,
+  // so multiplying here caused 10× speed divergence and wall tunneling during RL.
+  const substepDelta = delta
 
-  for (let i = 0; i < substeps; i++) {
-    updateRobot(substepDelta)
-    updateDebugRobot(substepDelta)
-    stepPhysics(substepDelta)
-    stepDebugRobotPhysics(keys, substepDelta)
-    updateRL(substepDelta)
-    applyRobotCollisions()
-  }
+  updateRobot(substepDelta)
+  updateDebugRobot(substepDelta)
+  stepPhysics(substepDelta)
+  stepDebugRobotPhysics(keys, substepDelta)
+  updateRL(substepDelta)
+  applyRobotCollisions()
 
   // Send RL state to Python once per rendered frame (after all substeps)
   flushRLState()

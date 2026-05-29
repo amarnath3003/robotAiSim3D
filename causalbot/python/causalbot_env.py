@@ -33,6 +33,7 @@ import math
 import random
 import threading
 import time
+from collections import deque
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
@@ -89,7 +90,7 @@ class CausalBotEnv(gym.Env):
         self.episode_reward = 0.0
 
         # ── History ring-buffer (last 20 outcomes for win-rate display) ───────
-        self._history       = []    # list of 'death' | 'success' | 'timeout'
+        self._history       = deque(maxlen=20)  # PERF2: O(1) append/evict vs list.pop(0)
         self._HISTORY_LEN   = 20
 
         # ── Sync events ───────────────────────────────────────────────────────
@@ -160,7 +161,8 @@ class CausalBotEnv(gym.Env):
                             self.max_steps = max(50, int(msg['max_steps']))
                         print(f'[Env] max_steps → {self.max_steps}')
                     if 'train_mode' in msg:
-                        self.train_mode = bool(msg['train_mode'])
+                        with self._lock:
+                            self.train_mode = bool(msg['train_mode'])
                         print(f'[Env] train_mode → {self.train_mode}')
                     if 'death_dist' in msg:
                         global DEATH_DIST
@@ -421,8 +423,6 @@ class CausalBotEnv(gym.Env):
             with self._lock:
                 self.death_count += 1
                 self._history.append('death')
-                if len(self._history) > self._HISTORY_LEN:
-                    self._history.pop(0)
             print(f'[Env] ☠  DEATH #{self.death_count} | '
                   f'ep {self.episode_num} step {self.current_step} | '
                   f'dist {target_dist:.2f}m | lidar_min {lidar_min:.2f}m')
@@ -434,19 +434,17 @@ class CausalBotEnv(gym.Env):
             with self._lock:
                 self.success_count += 1
                 self._history.append('success')
-                if len(self._history) > self._HISTORY_LEN:
-                    self._history.pop(0)
             print(f'[Env] ✓  SUCCESS #{self.success_count} | '
                   f'ep {self.episode_num} step {self.current_step}')
 
-        if self.current_step >= self.max_steps:
+        # L2 fix: truncated is only True if the episode was NOT already terminated
+        # (SB3 treats simultaneous terminated+truncated as undefined behaviour)
+        if not terminated and self.current_step >= self.max_steps:
             truncated = True
             if outcome is None:
                 outcome = 'timeout'
                 with self._lock:
                     self._history.append('timeout')
-                    if len(self._history) > self._HISTORY_LEN:
-                        self._history.pop(0)
 
         self.episode_reward += reward
 

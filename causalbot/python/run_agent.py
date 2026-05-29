@@ -123,11 +123,29 @@ class Agent:
         self._parsing_lock  = threading.Lock()
 
     def _load_model(self):
-        model_path = os.path.join(os.path.dirname(__file__), 'models', 'causalbot_ppo_final.zip')
+        # Q2: absolute path so script works regardless of CWD
+        script_dir  = os.path.dirname(os.path.abspath(__file__))
+        models_dir  = os.path.join(script_dir, 'models')
+        model_path  = os.path.join(models_dir, 'causalbot_ppo_final.zip')
+        vecnorm_path = os.path.join(models_dir, 'causalbot_room_vecnorm.pkl')
         try:
             from stable_baselines3 import PPO
+            from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
             if os.path.exists(model_path):
                 print(f'[Agent] Loading PPO model: {model_path}')
+                # M2 fix: wrap env in VecNormalize so obs are normalised the same
+                # way they were during training.  Without this the policy sees raw
+                # obs whose scale differs from what it learned on → poor performance.
+                vec_env = DummyVecEnv([lambda: self.env])
+                if os.path.exists(vecnorm_path):
+                    norm_env = VecNormalize.load(vecnorm_path, vec_env)
+                    norm_env.training   = False   # don't keep updating stats at inference
+                    norm_env.norm_reward = False  # rewards don't matter at inference
+                    self._norm_env = norm_env
+                    print(f'[Agent] VecNormalize stats loaded from {vecnorm_path}')
+                else:
+                    self._norm_env = None
+                    print('[Agent] No VecNormalize stats found — using raw obs')
                 m = PPO.load(model_path)
                 print('[Agent] PPO model loaded ✓')
                 return m
@@ -137,11 +155,17 @@ class Agent:
                 print('        → Using RANDOM policy for now.\n')
         except ImportError:
             print('[Agent] stable-baselines3 not installed → random policy.')
+        self._norm_env = None
         return None
 
     def _act(self, obs):
         if self.model is not None:
-            action, _ = self.model.predict(obs, deterministic=True)
+            # M2 fix: normalise obs through VecNormalize before passing to policy
+            if self._norm_env is not None:
+                obs_norm = self._norm_env.normalize_obs(obs)
+            else:
+                obs_norm = obs
+            action, _ = self.model.predict(obs_norm, deterministic=True)
             return action
         return self.env.action_space.sample()
 
@@ -228,9 +252,10 @@ class Agent:
                         self._executing = False
 
             else:
-                # IDLE: heartbeat step to keep WS alive + observe scene
-                obs, _, _, _, _ = self.env.step([0.0, 0.0, 0.0, 0.0])
-                time.sleep(0.05)   # ~20 Hz idle
+                # M3 fix: in IDLE we don't need a round-trip step — just sleep.
+                # Sending [0,0,0,0] every 50ms consumed unnecessary WS bandwidth
+                # and browser CPU ticking the physics engine in RL mode.
+                time.sleep(0.05)
 
 
 # ─── Entry point ──────────────────────────────────────────────────────────────

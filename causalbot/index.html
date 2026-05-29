@@ -52,7 +52,7 @@
       #skill-log {
         position: absolute;
         top: 16px;
-        right: 16px;
+        right: 284px;
         width: 200px;
         display: flex;
         flex-direction: column;
@@ -330,7 +330,7 @@
         flex: 1;
       }
       .rld-conn-badge {
-        font-size: 9px;
+        font-size: 10px;
         font-weight: 700;
         letter-spacing: 0.1em;
         padding: 2px 8px;
@@ -353,12 +353,12 @@
         margin-top: 2px;
       }
       .rld-mode-label {
-        font-size: 9px;
+        font-size: 10px;
         letter-spacing: 0.1em;
         color: #4b5563;
       }
       .rld-mode-val {
-        font-size: 10px;
+        font-size: 11px;
         font-weight: 700;
         letter-spacing: 0.08em;
         color: #888;
@@ -373,10 +373,10 @@
         gap: 6px;
       }
       .rld-section-title {
-        font-size: 8px;
-        letter-spacing: 0.14em;
+        font-size: 10px;
+        letter-spacing: 0.12em;
         text-transform: uppercase;
-        color: #4b5563;
+        color: #6b7280;
         margin-bottom: 2px;
       }
       .rld-kv-row {
@@ -386,8 +386,8 @@
         flex-wrap: wrap;
       }
       .rld-key {
-        font-size: 8px;
-        letter-spacing: 0.1em;
+        font-size: 10px;
+        letter-spacing: 0.08em;
         color: #6b7280;
         text-transform: uppercase;
       }
@@ -423,7 +423,7 @@
       /* Action bars */
       .rld-action-bars { display: flex; flex-direction: column; gap: 4px; }
       .rld-bar-wrap    { display: flex; align-items: center; gap: 6px; }
-      .rld-bar-label   { font-size: 9px; color: #6b7280; width: 18px; text-align: right; }
+      .rld-bar-label   { font-size: 10px; color: #6b7280; width: 20px; text-align: right; }
       .rld-bar-track {
         flex: 1;
         height: 6px;
@@ -476,7 +476,7 @@
 
       /* Param row */
       .rld-param-row   { display: flex; align-items: center; gap: 6px; }
-      .rld-param-label { font-size: 9px; color: #6b7280; width: 60px; }
+      .rld-param-label { font-size: 10px; color: #6b7280; width: 64px; }
       .rld-param-input {
         flex: 1;
         background: rgba(255,255,255,0.05);
@@ -491,7 +491,6 @@
       }
       .rld-param-input:focus { border-color: #a78bfa; }
 
-      /* Buttons */
       .rld-btn {
         padding: 5px 10px;
         border-radius: 8px;
@@ -499,7 +498,7 @@
         background: rgba(255,255,255,0.04);
         color: #cbd5e1;
         font-family: monospace;
-        font-size: 10px;
+        font-size: 11px;
         cursor: pointer;
         transition: background 0.15s, border-color 0.15s;
         white-space: nowrap;
@@ -507,7 +506,15 @@
       .rld-btn:hover  { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.25); }
       .rld-btn-rl     { border-color: #a78bfa; color: #a78bfa; }
       .rld-btn-rl:hover { background: rgba(167,139,250,0.15); }
-      .rld-btn-sm     { font-size: 9px; padding: 4px 8px; }
+      .rld-btn-sm     { font-size: 10px; padding: 4px 8px; }
+      .rld-btn-apply  {
+        width: 100%;
+        margin-top: 6px;
+        border-color: rgba(167,139,250,0.4);
+        color: #a78bfa;
+      }
+      .rld-btn-apply:hover { background: rgba(167,139,250,0.12); }
+      .rld-btn-train  { background: rgba(74,222,128,0.15); border-color: rgba(74,222,128,0.4); }
 
       .rld-btn-row {
         display: flex;
@@ -553,6 +560,87 @@
       #rl-dashboard::-webkit-scrollbar-track { background: transparent; }
       #rl-dashboard::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
 
+      /* Body flex column (matches outer panel gap) */
+      #rld-body {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      /* Mode tabs */
+      .rld-mode-tabs {
+        display: flex;
+        gap: 4px;
+        margin-top: 8px;
+      }
+      .rld-tab {
+        flex: 1;
+        padding: 5px 0;
+        border-radius: 6px;
+        border: 1px solid rgba(255,255,255,0.1);
+        background: rgba(255,255,255,0.03);
+        color: #6b7280;
+        font-family: monospace;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      .rld-tab:hover { background: rgba(255,255,255,0.08); color: #cbd5e1; }
+      .rld-tab.rld-tab-active {
+        background: rgba(167,139,250,0.18);
+        border-color: rgba(167,139,250,0.5);
+        color: #c4b5fd;
+      }
+
+      /* Navigation grid */
+      .rld-nav-grid {
+        display: grid;
+        grid-template-columns: 44px 12px 1fr 12px 1fr;
+        align-items: baseline;
+        gap: 3px;
+        font-size: 11px;
+      }
+      .rld-dist-row {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        margin-top: 2px;
+      }
+      .rld-val-dist {
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      /* Goal setter (visually separated from read-only display) */
+      .rld-divider {
+        height: 1px;
+        background: rgba(255,255,255,0.07);
+        margin: 4px 0;
+      }
+      .rld-set-goal-row {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .rld-set-goal-label {
+        font-size: 9px;
+        letter-spacing: 0.1em;
+        color: #4b5563;
+        text-transform: uppercase;
+        width: 28px;
+        flex-shrink: 0;
+      }
+
+      /* History legend */
+      .rld-history-legend {
+        font-size: 9px;
+        color: rgba(255,255,255,0.3);
+        margin-top: 3px;
+        letter-spacing: 0.04em;
+      }
+
     </style>
   </head>
   <body>
@@ -560,7 +648,7 @@
       <div id="perception-mode-indicator" onclick="window.__togglePerception()" style="
         position: absolute;
         top: 16px;
-        right: 220px;
+        right: 284px;
         padding: 5px 14px;
         border-radius: 20px;
         border: 1px solid #4488ff;
@@ -574,7 +662,7 @@
       ">🧠 Omniscient</div>
       <div id="status-bar">Ready</div>
       <div id="memory-log"></div>
-      <div id="skill-log" style="top:16px;right:16px;"></div>
+      <div id="skill-log"></div>
 
       <!-- RL Dashboard -->
       <div id="rl-dashboard"></div>

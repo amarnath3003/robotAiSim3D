@@ -180,6 +180,17 @@ export function setRLParams(params) {
   if (params.max_steps !== undefined) _telemetry.maxSteps = params.max_steps
 }
 
+// C1 fix: let main.js (or any caller) push the maze goal to Python on demand.
+// Used when WS first opens so Python's MazeEnv.target_goal isn't stuck at (0,0).
+export function sendMazeGoal(x, z) {
+  if (_ws?.readyState === WebSocket.OPEN) {
+    _send({ type: 'maze_goal', x: +x, z: +z })
+    _telemetry.goal = { x: +x, z: +z }
+    _moveGoalMarker(+x, +z)
+    console.log(`[RL] maze_goal sent: (${(+x).toFixed(2)}, ${(+z).toFixed(2)})`)
+  }
+}
+
 // ─── WebSocket connection ─────────────────────────────────────────────────────
 
 function _connect() {
@@ -195,6 +206,18 @@ function _connect() {
     console.log('[RL] Python connected → RL mode')
     const el = document.getElementById('status-bar')
     if (el) el.textContent = '🤖 RL mode active — type any goal command below'
+
+    // C1 fix: push current maze goal to Python immediately on connect so
+    // MazeEnv.target_goal is never stuck at (0,0) through a whole episode.
+    if (window.MAZE_MODE) {
+      const goal = window.getMazeGoal?.()
+      if (goal) {
+        _send({ type: 'maze_goal', x: goal.x, z: goal.z })
+        _telemetry.goal = { x: goal.x, z: goal.z }
+        _moveGoalMarker(goal.x, goal.z)
+        console.log(`[RL] Auto-sent maze_goal (${goal.x.toFixed(2)}, ${goal.z.toFixed(2)}) on connect`)
+      }
+    }
   }
 
   _ws.onmessage = ({ data }) => {
@@ -284,8 +307,8 @@ function _handleReset(msg) {
   removeRLWalls(_wallBodies)
   _wallBodies = []
 
-  // 2. Reset robot to start
-  const sx = 0, sy = FLOOR_Y, sz = 1.8
+  // 2. Reset robot to start — C2 fix: maze mode starts at (0,0), room at (0,z=1.8)
+  const sx = 0, sy = FLOOR_Y, sz = window.MAZE_MODE ? 0 : 1.8
   setRobotPos(sx, sy, sz)
   state.robot.rotation   = 0
   state.robot.heldObject = null
@@ -406,7 +429,7 @@ function _createGoalMarker() {
 
 function _moveGoalMarker(x, z) {
   if (_goalMarker) {
-    _goalMarker.position.set(x, 0.18, z)
+    _goalMarker.position.set(x, 0.22, z)   // G1: 0.22 lifts above ball/floor to avoid z-fighting
     _goalMarker.visible = true
   }
   if (_goalBeam) {
@@ -509,9 +532,10 @@ export function castLidar() {
       if (!child.isMesh) return
       const n = (child.name || '').toLowerCase()
       // Exclude robot itself and goal visual markers
-      if (n.includes('robot'))      return
+      if (n.includes('robot'))       return
       if (n.includes('goal_marker')) return
       if (n.includes('goal_beam'))   return
+      if (n.includes('object_ball')) return   // L1: ball near goal triggers false death
       if (n.includes('debug'))       return
       _lidarCache.push(child)
     })
@@ -520,8 +544,10 @@ export function castLidar() {
   const pos     = getRobotPos()
   const eyePos  = new THREE.Vector3(pos.x, pos.y + LIDAR_HEIGHT, pos.z)
   const heading = state.robot.rotation || 0
-  const halfFov = LIDAR_FOV_RAD / 2
-  const step    = LIDAR_FOV_RAD / (LIDAR_RAYS - 1)
+  // M5: maze needs 270° FOV to see corridors on both sides; room uses 165°
+  const fovRad  = window.MAZE_MODE ? (270 * Math.PI / 180) : LIDAR_FOV_RAD
+  const halfFov = fovRad / 2
+  const step    = fovRad / (LIDAR_RAYS - 1)
 
   _raycaster.near = 0.05
   _raycaster.far  = LIDAR_RANGE
