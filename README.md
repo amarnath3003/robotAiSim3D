@@ -1,4 +1,5 @@
-# 🤖 robotAiSim3D — CausalBot
+# 🤖 robotAiSim3D — CausalBot the research agnet
+
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Vite](https://img.shields.io/badge/vite-%23646CFF.svg?style=flat&logo=vite&logoColor=white)](https://vitejs.dev/)
