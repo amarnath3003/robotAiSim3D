@@ -109,7 +109,12 @@ export function updateRobot(delta) {
       if (mesh.parent !== handMesh) {
         handMesh.attach(mesh)
       }
-      mesh.position.set(0, 0, 0)
+      if (!handMesh.geometry.boundingBox) {
+        handMesh.geometry.computeBoundingBox()
+      }
+      const center = new THREE.Vector3()
+      handMesh.geometry.boundingBox.getCenter(center)
+      mesh.position.copy(center)
 
       const wp = new THREE.Vector3()
       mesh.getWorldPosition(wp)
