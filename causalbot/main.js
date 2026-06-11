@@ -273,21 +273,5 @@ async function boot() {
   }
 }
 
-
-<<<<<<< HEAD
-
 // ─── Launch ────────────────────────────────────────────────────────────────────
-=======
-  // C3 fix: 1 substep per frame — physics.js has its own fixed-step accumulator,
-  // so multiplying here caused 10× speed divergence and wall tunneling during RL.
-  const substepDelta = delta
-
-  updateRobot(substepDelta)
-  updateDebugRobot(substepDelta)
-  stepPhysics(substepDelta)
-  stepDebugRobotPhysics(keys, substepDelta)
-  updateRL(substepDelta)
-  applyRobotCollisions()
->>>>>>> eacc7579af6f7deeef492076810d8800c06d3aff
-
 boot()
