@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { state, getRobotPos, setRobotPos } from './state.js'
-import { findPath } from './pathfinder.js'
+import { castLidar, castVision } from './perception/vision.js'
 import { setStatus, setAgentStatus } from './ui.js'
 
 const loader = new GLTFLoader()
@@ -175,53 +175,39 @@ export function updateDebugRobot(delta) {
   }
 }
 
-// Navigation — A* pathfinding from current position to target
+// Navigation — Reactive Steering with LiDAR & CV
 export function navigateTo(tx, ty, tz, onArrived, speed = 2.5, excludeIds = null) {
   const FLOOR_Y = 0.35
   const targetY = FLOOR_Y
 
-  // Get held object ids to exclude from obstacle grid
-  const finalExcludeIds = excludeIds || (state.robot.heldObject ? [state.robot.heldObject] : [])
+  setAgentStatus('Navigating...', 'navigating')
 
-  // Compute path
-  const startPos = getRobotPos()
-  setAgentStatus('Computing path...', 'thinking')
-  const path = findPath(startPos.x, startPos.z, tx, tz, finalExcludeIds)
+  // --- LiDAR VISUALIZER ---
+  const lineGeo = new THREE.BufferGeometry()
+  const lineMat = new THREE.LineBasicMaterial({ vertexColors: true, depthTest: false })
+  const lidarLines = new THREE.LineSegments(lineGeo, lineMat)
+  lidarLines.renderOrder = 999
+  state.scene.three.add(lidarLines)
 
-  // Fallback: straight line if pathfinder fails (open space)
-  const waypoints = path
-    ? path.map(wp => ({ x: wp.x, y: targetY, z: wp.z }))
-    : [{ x: tx, y: targetY, z: tz }]
-
-  // Ensure final waypoint is exactly the target
-  waypoints[waypoints.length - 1] = { x: tx, y: targetY, z: tz }
-
-  // --- PATH VISUALIZER ---
-  const points = [new THREE.Vector3(startPos.x, startPos.y, startPos.z)]
-  waypoints.forEach(wp => points.push(new THREE.Vector3(wp.x, wp.y, wp.z)))
-  
-  const pathGeo = new THREE.BufferGeometry().setFromPoints(points)
-  const pathMat = new THREE.LineDashedMaterial({ color: 0x00ffff, dashSize: 0.2, gapSize: 0.1 })
-  const currentPathLine = new THREE.Line(pathGeo, pathMat)
-  currentPathLine.computeLineDistances()
-  currentPathLine.position.y += 0.05 // Raise slightly to avoid z-fighting
-  state.scene.three.add(currentPathLine)
-
-  let wpIndex = 0
   let cancelled = false
-
   const clearPath = () => {
-    if (currentPathLine.parent) {
-      state.scene.three.remove(currentPathLine)
-      currentPathLine.geometry.dispose()
-      currentPathLine.material.dispose()
+    if (lidarLines.parent) {
+      state.scene.three.remove(lidarLines)
+      lidarLines.geometry.dispose()
+      lidarLines.material.dispose()
     }
   }
 
+  // Reactive Navigation Loop
   const interval = setInterval(() => {
     if (cancelled) return
 
-    if (wpIndex >= waypoints.length) {
+    const p = getRobotPos()
+    const dx = tx - p.x
+    const dz = tz - p.z
+    const distToTarget = Math.sqrt(dx * dx + dz * dz)
+
+    if (distToTarget < 0.1) {
       clearInterval(interval)
       clearPath()
       setAgentStatus(null)
@@ -229,24 +215,97 @@ export function navigateTo(tx, ty, tz, onArrived, speed = 2.5, excludeIds = null
       return
     }
 
-    const wp = waypoints[wpIndex]
-    const p  = getRobotPos()
-    const dx = wp.x - p.x
-    const dy = wp.y - p.y
-    const dz = wp.z - p.z
-    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz)
+    // 1. Get current facing angle
+    const facingAngle = root?.rotation.y || 0
 
-    if (dist < 0.1) {
-      wpIndex++
-      return
+    // 2. Cast Vision (to build memory/detect objects dynamically)
+    castVision(new THREE.Vector3(p.x, p.y, p.z), facingAngle, state.scene.three)
+
+    // 3. Cast LiDAR for obstacle avoidance
+    const lidarDistances = castLidar(new THREE.Vector3(p.x, p.y, p.z), facingAngle, state.scene.three)
+    
+    // Visualize LiDAR rays
+    updateLidarVisualizer(lidarLines, p, facingAngle, lidarDistances)
+
+    // 4. Calculate desired steering (Potential Fields / Braitenberg)
+    // The target provides an attractive force.
+    let forceX = (dx / distToTarget) * 1.0
+    let forceZ = (dz / distToTarget) * 1.0
+
+    // Obstacles provide repulsive forces.
+    const rays = lidarDistances.length
+    const fovRad = Math.PI // 180 degrees from default-bot.json config
+    const halfFov = fovRad / 2
+    const angleStep = fovRad / Math.max(rays - 1, 1)
+    
+    // The castLidar function handles ray angles as: startAngle = facingAngle - halfFov (if rays > 1)
+    const startAngle = rays > 1 ? facingAngle - halfFov : facingAngle
+
+    const safeDistance = 1.0
+    for (let i = 0; i < rays; i++) {
+      const d = lidarDistances[i]
+      if (d < safeDistance) {
+        const rayAngle = startAngle + angleStep * i
+        const rayDirX = -Math.sin(rayAngle)
+        const rayDirZ = -Math.cos(rayAngle)
+        
+        // Repulsive force is stronger when closer
+        const repulseMag = Math.pow(safeDistance - d, 2) * 5.0
+        
+        forceX -= rayDirX * repulseMag
+        forceZ -= rayDirZ * repulseMag
+      }
     }
 
-    const step = Math.min(speed * 0.016, dist)
-    const n    = step / dist
-    setRobotPos(p.x + dx * n, p.y + dy * n, p.z + dz * n)
+    // Move along the calculated force vector
+    const forceMag = Math.sqrt(forceX * forceX + forceZ * forceZ)
+    if (forceMag > 0.001) {
+      forceX /= forceMag
+      forceZ /= forceMag
+    }
+
+    const step = Math.min(speed * 0.016, distToTarget)
+    setRobotPos(p.x + forceX * step, p.y, p.z + forceZ * step)
+
   }, 16)
 
   return () => { cancelled = true; clearInterval(interval); clearPath() }
+}
+
+function updateLidarVisualizer(lines, p, facingAngle, distances) {
+  const points = []
+  const colors = []
+  const colorClear = new THREE.Color(0x00ff00)
+  const colorBlocked = new THREE.Color(0xff0000)
+
+  const rays = distances.length
+  const fovRad = Math.PI 
+  const halfFov = fovRad / 2
+  const angleStep = fovRad / Math.max(rays - 1, 1)
+  const startAngle = rays > 1 ? facingAngle - halfFov : facingAngle
+
+  for (let i = 0; i < rays; i++) {
+    const angle = startAngle + angleStep * i
+    const d = distances[i]
+    
+    // Origin of ray
+    const sx = p.x
+    const sy = p.y + 0.5 // Lidar height
+    const sz = p.z
+    
+    // End of ray
+    const ex = sx - Math.sin(angle) * d
+    const ey = sy
+    const ez = sz - Math.cos(angle) * d
+
+    points.push(sx, sy, sz, ex, ey, ez)
+    
+    const color = d < 1.0 ? colorBlocked : colorClear
+    colors.push(color.r, color.g, color.b, color.r, color.g, color.b)
+  }
+
+  lines.geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3))
+  lines.geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
 }
 
 // Instant teleport (for jumps/special moves)
