@@ -175,140 +175,231 @@ export function updateDebugRobot(delta) {
   }
 }
 
-// Navigation — Reactive Steering with LiDAR & CV
+// Navigation — Reactive Potential-Field Steering with LiDAR & CV
+// The robot starts in an unknown env. No hardcoded map, no A*.
+// Every tick it casts its FOV-anchored LiDAR from its eye position,
+// computes an attractive force toward the goal and repulsive forces
+// from any ray that hits something too close, then steps along the
+// resultant vector. A tangential "wriggle" escapes local minima that
+// arise when repulsive forces from a concave obstacle perfectly cancel
+// the attractive force — a mathematical inevitability of pure potential
+// fields regardless of whether the environment is known or not.
 export function navigateTo(tx, ty, tz, onArrived, speed = 2.5, excludeIds = null) {
-  const FLOOR_Y = 0.35
-  const targetY = FLOOR_Y
+  const FLOOR_Y       = 0.35
+  const EYE_HEIGHT    = 0.5    // lidar_front mountHeight from manifest
+  const SAFE_DIST     = 0.9    // metres — repulsion activates below this
+  const ARRIVE_THRESH = 0.12   // metres — arrived
+  const LIDAR_FOV     = Math.PI  // 180° from manifest lidar_front
+  const LIDAR_RAYS    = 11
+  const TICK_DT       = 0.016
 
-  setAgentStatus('Navigating...', 'navigating')
+  setAgentStatus('Navigating…', 'navigating')
 
-  // --- LiDAR VISUALIZER ---
-  const lineGeo = new THREE.BufferGeometry()
-  const lineMat = new THREE.LineBasicMaterial({ vertexColors: true, depthTest: false })
-  const lidarLines = new THREE.LineSegments(lineGeo, lineMat)
-  lidarLines.renderOrder = 999
-  state.scene.three.add(lidarLines)
+  // ── Scene objects for visualisers ──────────────────────────────────────────
+  const lidarGeo = new THREE.BufferGeometry()
+  const lidarMat = new THREE.LineBasicMaterial({ vertexColors: true, depthTest: false })
+  const lidarViz = new THREE.LineSegments(lidarGeo, lidarMat)
+  lidarViz.renderOrder = 999
+  state.scene.three.add(lidarViz)
 
-  let cancelled = false
-  const clearPath = () => {
-    if (lidarLines.parent) {
-      state.scene.three.remove(lidarLines)
-      lidarLines.geometry.dispose()
-      lidarLines.material.dispose()
+  const coneGeo = new THREE.BufferGeometry()
+  const coneMat = new THREE.LineBasicMaterial({ color: 0x2266ff, transparent: true, opacity: 0.25, depthTest: false })
+  const coneViz = new THREE.LineSegments(coneGeo, coneMat)
+  coneViz.renderOrder = 998
+  state.scene.three.add(coneViz)
+
+  // ── Local state ────────────────────────────────────────────────────────────
+  let cancelled   = false
+  let heading     = root ? root.rotation.y : 0  // tracked from movement, not lerped mesh
+  let stuckTimer  = 0
+  let escapeTimer = 0
+  let escapePhase = false
+  let lastX = null, lastZ = null
+
+  const cleanup = () => {
+    for (const obj of [lidarViz, coneViz]) {
+      if (obj.parent) state.scene.three.remove(obj)
+      obj.geometry.dispose()
+      obj.material.dispose()
     }
   }
 
-  // Reactive Navigation Loop
+  // ── Main reactive loop (16 ms ≈ 60 fps) ───────────────────────────────────
   const interval = setInterval(() => {
     if (cancelled) return
 
-    const p = getRobotPos()
+    const p  = getRobotPos()
     const dx = tx - p.x
     const dz = tz - p.z
-    const distToTarget = Math.sqrt(dx * dx + dz * dz)
+    const distToGoal = Math.hypot(dx, dz)
 
-    if (distToTarget < 0.1) {
+    if (distToGoal < ARRIVE_THRESH) {
       clearInterval(interval)
-      clearPath()
+      cleanup()
       setAgentStatus(null)
       onArrived?.()
       return
     }
 
-    // 1. Get current facing angle
-    const facingAngle = root?.rotation.y || 0
+    // ── 1. Sensor origin ────────────────────────────────────────────────────
+    const eyePos = new THREE.Vector3(p.x, p.y + EYE_HEIGHT, p.z)
 
-    // 2. Cast Vision (to build memory/detect objects dynamically)
-    castVision(new THREE.Vector3(p.x, p.y, p.z), facingAngle, state.scene.three)
+    // ── 2. LiDAR — 11 rays in 180° arc centred on current heading ──────────
+    const lidarDist = castLidar(eyePos, heading, state.scene.three)
 
-    // 3. Cast LiDAR for obstacle avoidance
-    const lidarDistances = castLidar(new THREE.Vector3(p.x, p.y, p.z), facingAngle, state.scene.three)
-    
-    // Visualize LiDAR rays
-    updateLidarVisualizer(lidarLines, p, facingAngle, lidarDistances)
+    // ── 3. Vision / CV — 36 rays in 150° arc, object detection ─────────────
+    const cvHits = castVision(eyePos, heading, state.scene.three)
+    if (cvHits.length > 0) {
+      // Fire-and-forget: feed detections into perceptual memory
+      import('./perception/perceptualMemory.js').then(({ updatePerception }) =>
+        updatePerception(cvHits.map(h => ({
+          meshName:     h.id,
+          estimatedPos: [h.position.x, h.position.y, h.position.z],
+          distance:     h.distance,
+          confidence:   h.confidence,
+        })))
+      ).catch(() => {})
+    }
 
-    // 4. Calculate desired steering (Potential Fields / Braitenberg)
-    // The target provides an attractive force.
-    let forceX = (dx / distToTarget) * 1.0
-    let forceZ = (dz / distToTarget) * 1.0
+    // ── 4. Visualise ────────────────────────────────────────────────────────
+    _drawLidarViz(lidarViz, eyePos, heading, lidarDist, LIDAR_FOV, LIDAR_RAYS, SAFE_DIST)
+    _drawFovCone(coneViz,  eyePos, heading, 8.0, Math.PI * 0.833 /* 150° CV FOV */)
 
-    // Obstacles provide repulsive forces.
-    const rays = lidarDistances.length
-    const fovRad = Math.PI // 180 degrees from default-bot.json config
-    const halfFov = fovRad / 2
-    const angleStep = fovRad / Math.max(rays - 1, 1)
-    
-    // The castLidar function handles ray angles as: startAngle = facingAngle - halfFov (if rays > 1)
-    const startAngle = rays > 1 ? facingAngle - halfFov : facingAngle
+    // ── 5. Stagnation detector ──────────────────────────────────────────────
+    if (lastX !== null) {
+      const moved = Math.hypot(p.x - lastX, p.z - lastZ)
+      if (moved < 0.005) {
+        stuckTimer += TICK_DT
+        if (stuckTimer > 0.6 && !escapePhase) {
+          escapePhase = true
+          escapeTimer = 0
+        }
+      } else {
+        stuckTimer  = 0
+        escapePhase = false
+        escapeTimer = 0
+      }
+    }
+    lastX = p.x; lastZ = p.z
+    if (escapePhase) {
+      escapeTimer += TICK_DT
+      if (escapeTimer > 1.2) { escapePhase = false; stuckTimer = 0 }
+    }
 
-    const safeDistance = 1.0
-    for (let i = 0; i < rays; i++) {
-      const d = lidarDistances[i]
-      if (d < safeDistance) {
-        const rayAngle = startAngle + angleStep * i
-        const rayDirX = -Math.sin(rayAngle)
-        const rayDirZ = -Math.cos(rayAngle)
-        
-        // Repulsive force is stronger when closer
-        const repulseMag = Math.pow(safeDistance - d, 2) * 5.0
-        
-        forceX -= rayDirX * repulseMag
-        forceZ -= rayDirZ * repulseMag
+    // ── 6. Potential-field force ────────────────────────────────────────────
+    // Attractive — unit vector toward goal
+    let Fx = dx / distToGoal
+    let Fz = dz / distToGoal
+
+    // Repulsive — sum of per-ray pushes (sign matches castLidar: -sin/-cos)
+    const halfFov    = LIDAR_FOV / 2
+    const angleStep  = LIDAR_FOV / (LIDAR_RAYS - 1)
+    const startAngle = heading - halfFov
+
+    for (let i = 0; i < LIDAR_RAYS; i++) {
+      const d = lidarDist[i]
+      if (d < SAFE_DIST) {
+        const a   = startAngle + angleStep * i
+        const rdx = -Math.sin(a)   // vision.js castLidar convention
+        const rdz = -Math.cos(a)
+        const mag = Math.pow((SAFE_DIST - d) / SAFE_DIST, 2) * 4.5
+        Fx -= rdx * mag
+        Fz -= rdz * mag
       }
     }
 
-    // Move along the calculated force vector
-    const forceMag = Math.sqrt(forceX * forceX + forceZ * forceZ)
-    if (forceMag > 0.001) {
-      forceX /= forceMag
-      forceZ /= forceMag
+    // Tangential escape — perpendicular push when stuck in a force-cancel dead-zone
+    // This is a property of potential fields, not of knowing the env:
+    // at a concave corner, forward-facing repulsive rays cancel the attractive force exactly.
+    if (escapePhase) {
+      // Perpendicular to current heading (rotated 90° CW)
+      Fx += -Math.cos(heading) * 2.0
+      Fz +=  Math.sin(heading) * 2.0
     }
 
-    const step = Math.min(speed * 0.016, distToTarget)
-    setRobotPos(p.x + forceX * step, p.y, p.z + forceZ * step)
+    // ── 7. Normalise & step ─────────────────────────────────────────────────
+    const fMag = Math.hypot(Fx, Fz)
+    if (fMag > 0.001) { Fx /= fMag; Fz /= fMag }
+
+    const step = Math.min(speed * TICK_DT, distToGoal)
+    setRobotPos(p.x + Fx * step, FLOOR_Y, p.z + Fz * step)
+
+    // ── 8. Track heading from movement direction (smooth lerp) ──────────────
+    if (fMag > 0.001) {
+      const wantH = Math.atan2(Fx, Fz)   // atan2(sin,cos) forward convention
+      let diff = wantH - heading
+      while (diff >  Math.PI) diff -= Math.PI * 2
+      while (diff < -Math.PI) diff += Math.PI * 2
+      heading += diff * 0.25
+    }
 
   }, 16)
 
-  return () => { cancelled = true; clearInterval(interval); clearPath() }
+  return () => { cancelled = true; clearInterval(interval); cleanup() }
 }
 
-function updateLidarVisualizer(lines, p, facingAngle, distances) {
-  const points = []
-  const colors = []
-  const colorClear = new THREE.Color(0x00ff00)
-  const colorBlocked = new THREE.Color(0xff0000)
+// ─── LiDAR ray visualiser ────────────────────────────────────────────────────
+// Colours each ray green→orange→red by proximity. Same -sin/-cos convention
+// as perception/vision.js castLidar so the rays point exactly where the sensor fires.
+function _drawLidarViz(lineSegs, eyePos, heading, distances, fovRad, rayCount, safeDist) {
+  const pts   = []
+  const cols  = []
+  const C_OK  = new THREE.Color(0x00ff55)
+  const C_MID = new THREE.Color(0xffaa00)
+  const C_BAD = new THREE.Color(0xff2222)
 
-  const rays = distances.length
-  const fovRad = Math.PI 
-  const halfFov = fovRad / 2
-  const angleStep = fovRad / Math.max(rays - 1, 1)
-  const startAngle = rays > 1 ? facingAngle - halfFov : facingAngle
+  const halfFov   = fovRad / 2
+  const step      = fovRad / (rayCount - 1)
+  const startAng  = heading - halfFov
 
-  for (let i = 0; i < rays; i++) {
-    const angle = startAngle + angleStep * i
-    const d = distances[i]
-    
-    // Origin of ray
-    const sx = p.x
-    const sy = p.y + 0.5 // Lidar height
-    const sz = p.z
-    
-    // End of ray
-    const ex = sx - Math.sin(angle) * d
-    const ey = sy
-    const ez = sz - Math.cos(angle) * d
+  for (let i = 0; i < rayCount; i++) {
+    const a  = startAng + step * i
+    const d  = distances[i]
+    const ex = eyePos.x + (-Math.sin(a)) * d
+    const ez = eyePos.z + (-Math.cos(a)) * d
 
-    points.push(sx, sy, sz, ex, ey, ez)
-    
-    const color = d < 1.0 ? colorBlocked : colorClear
-    colors.push(color.r, color.g, color.b, color.r, color.g, color.b)
+    pts.push(eyePos.x, eyePos.y, eyePos.z, ex, eyePos.y, ez)
+
+    const t = 1.0 - Math.min(d / safeDist, 1.0)
+    const c = t < 0.5
+      ? C_OK.clone().lerp(C_MID, t * 2)
+      : C_MID.clone().lerp(C_BAD, (t - 0.5) * 2)
+    cols.push(c.r, c.g, c.b, c.r, c.g, c.b)
   }
 
-  lines.geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3))
-  lines.geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+  lineSegs.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3))
+  lineSegs.geometry.setAttribute('color',    new THREE.Float32BufferAttribute(cols, 3))
+  lineSegs.geometry.attributes.position.needsUpdate = true
+  lineSegs.geometry.attributes.color.needsUpdate    = true
 }
 
-// Instant teleport (for jumps/special moves)
+// ─── CV FOV cone visualiser ───────────────────────────────────────────────────
+// Shows the vision sensor's FOV as a blue translucent fan in the scene.
+function _drawFovCone(lineSegs, eyePos, heading, range, fovRad) {
+  const pts  = []
+  const segs = 14
+  const half = fovRad / 2
+
+  for (let i = 0; i <= segs; i++) {
+    const a  = (heading - half) + (fovRad / segs) * i
+    const ex = eyePos.x + (-Math.sin(a)) * range
+    const ez = eyePos.z + (-Math.cos(a)) * range
+    pts.push(eyePos.x, eyePos.y, eyePos.z, ex, eyePos.y, ez)
+  }
+  for (let i = 0; i < segs; i++) {
+    const a1 = (heading - half) + (fovRad / segs) * i
+    const a2 = (heading - half) + (fovRad / segs) * (i + 1)
+    pts.push(
+      eyePos.x + (-Math.sin(a1)) * range, eyePos.y, eyePos.z + (-Math.cos(a1)) * range,
+      eyePos.x + (-Math.sin(a2)) * range, eyePos.y, eyePos.z + (-Math.cos(a2)) * range,
+    )
+  }
+
+  lineSegs.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3))
+  lineSegs.geometry.attributes.position.needsUpdate = true
+}
+
+// Instant teleport (no navigation)
 export function setRobotPosition(x, y, z) {
   setRobotPos(x, y, z)
 }

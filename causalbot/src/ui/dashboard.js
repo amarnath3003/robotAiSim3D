@@ -108,6 +108,15 @@ export function initDashboard(options = {}) {
 
   document.body.appendChild(dashboardEl)
 
+  // Setup toggle checkbox for sensors
+  const cb = document.getElementById('cb-toggle-sensors')
+  if (cb) {
+    cb.checked = !!getState('ui.showSensorRays')
+    cb.onchange = (e) => {
+      setState('ui.showSensorRays', e.target.checked)
+    }
+  }
+
   // Start update loop (for non-reactive data like FPS)
   updateInterval = setInterval(tickUpdate, 250)
 
@@ -132,6 +141,11 @@ export function initDashboard(options = {}) {
 
   _unsubscribers.push(subscribe('rl.connected', (connected) => {
     updateRLDisplay(connected)
+  }))
+
+  _unsubscribers.push(subscribe('ui.showSensorRays', (val) => {
+    const cbSensors = document.getElementById('cb-toggle-sensors')
+    if (cbSensors) cbSensors.checked = !!val
   }))
 
   // Populate skills panel once (registry is already init'd before dashboard)
@@ -304,6 +318,10 @@ function buildStatsPanel() {
     <div class="cb-row">
       <span class="cb-label">Heading:</span>
       <span class="cb-value" id="cb-stats-heading">—</span>
+    </div>
+    <div class="cb-row" style="align-items: center; padding-top: 5px; border-top: 1px solid rgba(255,255,255,0.06);">
+      <span class="cb-label">Show Sensors:</span>
+      <input type="checkbox" id="cb-toggle-sensors" style="cursor: pointer; accent-color: #7af; width: 12px; height: 12px; margin: 0;" />
     </div>
   `
   return container

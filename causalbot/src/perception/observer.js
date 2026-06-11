@@ -13,6 +13,7 @@ import { getManifest, getObservationSpace } from '../core/manifest.js'
 import { getKnownObjects, decayPerceptionMemory } from '../core/state.js'
 import { castVision, castLidar } from './vision.js'
 import { updateDynamicObstacles } from '../nav/pathfinder.js'
+import { updateLidarRays, updateFovCone } from '../debug/visualizer.js'
 
 // ─── State ─────────────────────────────────────────────────────────────────────
 
@@ -88,6 +89,11 @@ export function updatePerception(dt, robot) {
       fov * (Math.PI / 180), range, rays
     )
   }
+
+  // Update debug sensor visualizers in Three.js scene
+  const yaw = getYawFromQuaternion(robot.orientation)
+  updateLidarRays(robot.position, yaw, lidarDistances)
+  updateFovCone(robot.position, yaw)
 
   // Build RL observation vector
   _lastObservation = buildRLObservation(robot, lidarDistances)

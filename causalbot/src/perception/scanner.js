@@ -1,7 +1,16 @@
+import * as THREE from 'three'
 import { state, getRobotPos, setRobotPos } from '../state.js'
-import { castVision, angleToTarget, isInFOV, normalizeAngle } from './visionSensor.js'
+import { castVision, castLidar } from './vision.js'
+import { angleToTarget, isInFOV, normalizeAngle } from './visionSensor.js'
 import { updatePerception, findPerceivedObject, getPerceivedSnapshot, perceivedToTarget } from './perceptualMemory.js'
 import { setStatus, setAgentStatus } from '../ui.js'
+
+const EYE_HEIGHT = 0.5  // matches manifest lidar_front mountHeight
+
+function getEyePos() {
+  const p = getRobotPos()
+  return new THREE.Vector3(p.x, p.y + EYE_HEIGHT, p.z)
+}
 
 const SCAN_STEP_MS    = 60     // ms between rotation steps
 const SCAN_STEP_RAD   = 0.20   // radians rotated per step (~11.5°)
@@ -55,10 +64,17 @@ export async function rotateTo(targetAngle, onStep) {
       current += stepSize
       setFacingAngle(current)
 
-      const hits = castVision(current)
-      updatePerception(hits)
-      allHits.push(...hits)
-      onStep?.(hits, current)
+      const hits = castVision(getEyePos(), current, state.scene.three)
+      // Convert vision.js format → perceptualMemory format
+      const legacyHits = hits.map(h => ({
+        meshName:     h.id,
+        estimatedPos: [h.position.x, h.position.y, h.position.z],
+        distance:     h.distance,
+        confidence:   h.confidence,
+      }))
+      updatePerception(legacyHits)
+      allHits.push(...legacyHits)
+      onStep?.(legacyHits, current)
 
       if (step >= steps) {
         clearInterval(interval)
@@ -85,8 +101,14 @@ export async function fullRoomScan(onProgress) {
     const angle = startAngle + (i / FULL_SCAN_STEPS) * Math.PI * 2
     setFacingAngle(angle)
 
-    const hits = castVision(angle)
-    updatePerception(hits)
+    const hits = castVision(getEyePos(), angle, state.scene.three)
+    const legacyHits = hits.map(h => ({
+      meshName: h.id,
+      estimatedPos: [h.position.x, h.position.y, h.position.z],
+      distance:    h.distance,
+      confidence:  h.confidence,
+    }))
+    updatePerception(legacyHits)
 
     const perceived = getPerceivedSnapshot()
     if (perceived.length > 0) {
@@ -134,14 +156,19 @@ export async function scanForObject(nameOrId) {
     const angle = startAngle + (i / FULL_SCAN_STEPS) * Math.PI * 2
     setFacingAngle(angle)
 
-    const hits = castVision(angle)
-    updatePerception(hits)
+    const hits = castVision(getEyePos(), angle, state.scene.three)
+    const legacyHits = hits.map(h => ({
+      meshName: h.id,
+      estimatedPos: [h.position.x, h.position.y, h.position.z],
+      distance:    h.distance,
+      confidence:  h.confidence,
+    }))
+    updatePerception(legacyHits)
 
     const found = findPerceivedObject(label)
     if (found && found.confidence > 0.35) {
       setStatus(`✅ Found ${found.name}!`)
       setAgentStatus(`Found ${found.name}!`, 'success')
-      // Rotate to face it
       const faceAngle = angleToTarget(found.estimatedPos)
       await rotateTo(faceAngle)
       return found
