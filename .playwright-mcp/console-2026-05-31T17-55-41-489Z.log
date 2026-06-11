@@ -1,0 +1,381 @@
+[     164ms] [LOG] ═══════════════════════════════════════════ @ http://localhost:5174/main.js:48
+[     164ms] [LOG]   CausalBot — Universal Robot Framework @ http://localhost:5174/main.js:49
+[     164ms] [LOG] ═══════════════════════════════════════════ @ http://localhost:5174/main.js:50
+[     164ms] [LOG]  @ http://localhost:5174/main.js:51
+[     164ms] [LOG] [Boot] Loading manifest... @ http://localhost:5174/main.js:55
+[     164ms] [LOG] [Manifest] Loading: ./manifests/default-bot.json @ http://localhost:5174/src/core/manifest.js:56
+[     169ms] [LOG] [Manifest] Loaded "CausalBot Alpha" v1.0.0 @ http://localhost:5174/src/core/manifest.js:77
+[     169ms] [LOG] [Manifest]   Morphology: biped @ http://localhost:5174/src/core/manifest.js:78
+[     169ms] [LOG] [Manifest]   Joints: 10 @ http://localhost:5174/src/core/manifest.js:79
+[     169ms] [LOG] [Manifest]   Capabilities: 7 @ http://localhost:5174/src/core/manifest.js:80
+[     169ms] [LOG] [Manifest]   Sensors: 3 @ http://localhost:5174/src/core/manifest.js:81
+[     169ms] [LOG] [Boot] Robot: "CausalBot Alpha" (biped) @ http://localhost:5174/main.js:57
+[     169ms] [LOG]  @ http://localhost:5174/main.js:58
+[     171ms] [LOG]  @ http://localhost:5174/main.js:62
+[     171ms] [LOG] [Boot] Initializing renderer... @ http://localhost:5174/main.js:65
+[     250ms] [WARNING] RGBELoader has been deprecated. Please use HDRLoader instead. @ http://localhost:5174/node_modules/.vite/deps/three_examples_jsm_loaders_RGBELoader__js.js?v=891aee09:268
+[     263ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5174/favicon.ico:0
+[     292ms] [LOG] [Render] HDRI loaded: /sky3.hdr @ http://localhost:5174/src/render/scene.js:287
+[     293ms] [LOG] [Render] Scene initialized @ http://localhost:5174/src/render/scene.js:108
+[     293ms] [LOG]  @ http://localhost:5174/main.js:70
+[     293ms] [LOG] [Boot] Initializing physics... @ http://localhost:5174/main.js:73
+[     311ms] [WARNING] using deprecated parameters for the initialization function; pass a single object instead @ http://localhost:5174/node_modules/.vite/deps/@dimforge_rapier3d-compat.js?v=891aee09:2516
+[     316ms] [LOG] [Physics] Rapier3D world initialized @ http://localhost:5174/src/physics/world.js:45
+[     317ms] [LOG]  @ http://localhost:5174/main.js:85
+[     317ms] [LOG] [Boot] Building environment... @ http://localhost:5174/main.js:88
+[     317ms] [LOG] [Env] Initialized (arena ±16 m) @ http://localhost:5174/src/env/objects.js:50
+[     318ms] [LOG] [Env] Boundary walls created @ http://localhost:5174/src/env/objects.js:95
+[     319ms] [LOG] [Env] Default layout loaded @ http://localhost:5174/src/env/objects.js:336
+[     319ms] [LOG] [Env] Obstacles: 11, goal at (8, -8) @ http://localhost:5174/src/env/objects.js:337
+[     319ms] [LOG]  @ http://localhost:5174/main.js:91
+[     319ms] [LOG] [Boot] Loading robot... @ http://localhost:5174/main.js:94
+[     320ms] [LOG] [Adapter] Loading robot: "CausalBot Alpha" @ http://localhost:5174/src/core/adapter.js:407
+[     325ms] [LOG] [Adapter] Model loaded: /robot.glb @ http://localhost:5174/src/core/adapter.js:456
+[     325ms] [LOG] [Adapter] Found 4 bones/objects in model @ http://localhost:5174/src/core/adapter.js:544
+[     325ms] [WARNING] [Adapter]   No bone found for joint "left_shoulder" — will use virtual joint @ http://localhost:5174/src/core/adapter.js:552
+[     325ms] [WARNING] [Adapter]   No bone found for joint "left_elbow" — will use virtual joint @ http://localhost:5174/src/core/adapter.js:552
+[     325ms] [WARNING] [Adapter]   No bone found for joint "right_shoulder" — will use virtual joint @ http://localhost:5174/src/core/adapter.js:552
+[     325ms] [WARNING] [Adapter]   No bone found for joint "right_elbow" — will use virtual joint @ http://localhost:5174/src/core/adapter.js:552
+[     325ms] [WARNING] [Adapter]   No bone found for joint "left_hip" — will use virtual joint @ http://localhost:5174/src/core/adapter.js:552
+[     325ms] [WARNING] [Adapter]   No bone found for joint "left_knee" — will use virtual joint @ http://localhost:5174/src/core/adapter.js:552
+[     325ms] [WARNING] [Adapter]   No bone found for joint "right_hip" — will use virtual joint @ http://localhost:5174/src/core/adapter.js:552
+[     325ms] [WARNING] [Adapter]   No bone found for joint "right_knee" — will use virtual joint @ http://localhost:5174/src/core/adapter.js:552
+[     325ms] [WARNING] [Adapter]   No bone found for joint "head_pan" — will use virtual joint @ http://localhost:5174/src/core/adapter.js:552
+[     325ms] [WARNING] [Adapter]   No bone found for joint "head_tilt" — will use virtual joint @ http://localhost:5174/src/core/adapter.js:552
+[     325ms] [WARNING] [Adapter] KinematicCharacterController unavailable — falling back to direct movement: controller.setSnapToGroundDistance is not a function @ http://localhost:5174/src/core/adapter.js:652
+[     326ms] [LOG] [Adapter] Robot "CausalBot Alpha" ready. @ http://localhost:5174/src/core/adapter.js:425
+[     326ms] [LOG] [Adapter]   Bones mapped: 0/10 @ http://localhost:5174/src/core/adapter.js:426
+[     326ms] [LOG] [Adapter]   Physics body: capsule @ http://localhost:5174/src/core/adapter.js:427
+[     326ms] [LOG] [Adapter]   Collision controller: yes @ http://localhost:5174/src/core/adapter.js:428
+[     326ms] [LOG]  @ http://localhost:5174/main.js:108
+[     326ms] [LOG] [Boot] Initializing perception... @ http://localhost:5174/main.js:111
+[     326ms] [LOG] [Observer] Initialized @ http://localhost:5174/src/perception/observer.js:31
+[     326ms] [LOG]  @ http://localhost:5174/main.js:114
+[     326ms] [LOG] [Boot] Initializing skills... @ http://localhost:5174/main.js:117
+[     326ms] [LOG] [Skills] Registry initialized: 15 skills available @ http://localhost:5174/src/skills/registry.js:56
+[     326ms] [LOG] [Boot] Available skills: navigate_to, move_to_position, rotate, spin, pick_up, release, scan_room, scan_for, stop, patrol, return_home, survey_grid, explore, find_goal, wave @ http://localhost:5174/main.js:119
+[     326ms] [LOG]  @ http://localhost:5174/main.js:120
+[     326ms] [LOG] [Boot] Setting up engine... @ http://localhost:5174/main.js:123
+[     326ms] [WARNING] THREE.THREE.Clock: This module has been deprecated. Please use THREE.Timer instead. @ http://localhost:5174/node_modules/.vite/deps/chunk-UVLSQTRI.js?v=891aee09:296
+[     326ms] [LOG] [Engine] Initialized with robot: "CausalBot Alpha" @ http://localhost:5174/src/core/engine.js:57
+[     326ms] [LOG] [Engine] Registered system: physics @ http://localhost:5174/src/core/engine.js:71
+[     326ms] [LOG] [Engine] Registered system: perception @ http://localhost:5174/src/core/engine.js:71
+[     326ms] [LOG] [Engine] Registered system: render @ http://localhost:5174/src/core/engine.js:71
+[     326ms] [LOG] [Boot] Initializing UI... @ http://localhost:5174/main.js:172
+[     327ms] [LOG] [Dashboard] Initialized @ http://localhost:5174/src/ui/dashboard.js:139
+[     327ms] [LOG] [Controls] Initialized @ http://localhost:5174/src/ui/controls.js:75
+[     328ms] [LOG] [Visualizer] Ready  V=all  L=lidar  P=path  G=grid @ http://localhost:5174/src/debug/visualizer.js:85
+[     328ms] [LOG]  @ http://localhost:5174/main.js:214
+[     328ms] [LOG]  @ http://localhost:5174/main.js:217
+[     328ms] [LOG] ═══════════════════════════════════════════ @ http://localhost:5174/main.js:218
+[     328ms] [LOG]   All systems ready. Starting simulation. @ http://localhost:5174/main.js:219
+[     328ms] [LOG] ═══════════════════════════════════════════ @ http://localhost:5174/main.js:220
+[     328ms] [LOG]  @ http://localhost:5174/main.js:221
+[     328ms] [LOG] LLM Description for this robot: @ http://localhost:5174/main.js:222
+[     328ms] [LOG] You are controlling a robot named "CausalBot Alpha".
+Morphology: biped
+Mass: 5kg
+
+## What you CAN do:
+- locomotion:ground: Navigate on flat and mildly uneven ground using bipedal locomotion.
+- locomotion:rotate: Rotate in place around the vertical axis.
+- manipulation:grasp: Pick up and carry lightweight objects using the left gripper.
+- manipulation:push: Push objects along the ground using the body or arms.
+- perception:lidar: Sense distances in an 11-ray horizontal fan around the robot.
+- perception:camera: Forward-facing visual sensor for object recognition.
+- perception:scan: Perform a 360-degree rotation scan to discover nearby objects.
+
+## Hard constraints (NEVER violate these):
+- Maximum speed: 2.5 m/s
+- Maximum rotation: 3.14 rad/s
+- Maximum reach: 0.65 m
+- Maximum lift capacity: 2 kg
+- CANNOT fly
+- CANNOT swim
+- CANNOT climb
+
+## Joints (movable parts):
+- left_shoulder (revolute, axis=x): range [-90°, 180°], group="left_arm"
+- left_elbow (revolute, axis=x): range [0°, 150°], group="left_arm"
+- right_shoulder (revolute, axis=x): range [-90°, 180°], group="right_arm"
+- right_elbow (revolute, axis=x): range [0°, 150°], group="right_arm"
+- left_hip (revolute, axis=x): range [-45°, 90°], group="left_leg"
+- left_knee (revolute, axis=x): range [0°, 120°], group="left_leg"
+- right_hip (revolute, axis=x): range [-45°, 90°], group="right_leg"
+- right_knee (revolute, axis=x): range [0°, 120°], group="right_leg"
+- head_pan (revolute, axis=y): range [-90°, 90°], group="head"
+- head_tilt (revolute, axis=x): range [-30°, 45°], group="head"
+
+## Sensors (how you perceive the world):
+- lidar_front (lidar): range=8m, fov=180°
+- camera_front (camera): range=10m, fov=60°
+- imu (imu): range=?m, fov=?°
+
+## Important rules:
+- You must SCAN/LOOK before acting on objects you cannot currently see.
+- Always check if an action is within your constraints before attempting it.
+- If an instruction is physically impossible for your morphology, explain WHY and suggest alternatives. @ http://localhost:5174/main.js:223
+[     328ms] [LOG]  @ http://localhost:5174/main.js:224
+[     328ms] [LOG] [Engine] Starting simulation loop @ http://localhost:5174/src/core/engine.js:86
+[     328ms] [LOG] [BgAgent] Background agent started. @ http://localhost:5174/src/brain/background_agent.js:56
+[     659ms] [WARNING] THREE.WebGLShadowMap: PCFSoftShadowMap has been deprecated. Using PCFShadowMap instead. @ http://localhost:5174/node_modules/.vite/deps/chunk-UVLSQTRI.js?v=891aee09:296
+[   14328ms] [LOG] [BgAgent] Running background goal: explore — Autonomous exploration pass @ http://localhost:5174/src/brain/background_agent.js:121
+[   14329ms] [WARNING] [Nav] No path found — attempting direct move @ http://localhost:5174/src/nav/pathfinder.js:290
+[   17544ms] [WARNING] [Nav] No path found — attempting direct move @ http://localhost:5174/src/nav/pathfinder.js:290
+[   19869ms] [WARNING] [Nav] No path found — attempting direct move @ http://localhost:5174/src/nav/pathfinder.js:290
+[   21997ms] [WARNING] [Nav] No path found — attempting direct move @ http://localhost:5174/src/nav/pathfinder.js:290
+[   24249ms] [LOG] [BgAgent] Goal complete: explore @ http://localhost:5174/src/brain/background_agent.js:127
+[   60329ms] [LOG] [BgAgent] Running background goal: explore — Autonomous exploration pass @ http://localhost:5174/src/brain/background_agent.js:121
+[   60329ms] [WARNING] [Nav] No path found — attempting direct move @ http://localhost:5174/src/nav/pathfinder.js:290
+[   68731ms] [WARNING] [Nav] No path found — attempting direct move @ http://localhost:5174/src/nav/pathfinder.js:290
+[   77161ms] [WARNING] [Nav] No path found — attempting direct move @ http://localhost:5174/src/nav/pathfinder.js:290
+[   79848ms] [WARNING] [Nav] No path found — attempting direct move @ http://localhost:5174/src/nav/pathfinder.js:290
+[   81579ms] [LOG] [BgAgent] Goal complete: explore @ http://localhost:5174/src/brain/background_agent.js:127
+[   92329ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 1 stale object(s): wall_W @ http://localhost:5174/src/brain/background_agent.js:121
+[   95630ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[   96328ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 1 stale object(s): wall_W @ http://localhost:5174/src/brain/background_agent.js:121
+[   99629ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  100329ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 1 stale object(s): wall_W @ http://localhost:5174/src/brain/background_agent.js:121
+[  103633ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  104330ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 1 stale object(s): wall_W @ http://localhost:5174/src/brain/background_agent.js:121
+[  107629ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  108329ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  111629ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  112335ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  115641ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  116330ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  119630ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  120328ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  123629ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  124328ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  127628ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  128329ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  131630ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  132329ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  135626ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  136325ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  139623ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  140323ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  143622ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  144321ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  147620ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  148320ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  151619ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  152319ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  155629ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  156317ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  159616ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  160316ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  163615ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  164316ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  167616ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  168316ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  171616ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  172314ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  175614ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  176319ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  179626ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  180314ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  183615ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  184314ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  187614ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  188314ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  191615ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  192314ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  195613ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  196314ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  199613ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  200314ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  203615ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  204313ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  207615ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  208314ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  211614ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  212314ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  215614ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  216313ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  219614ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  220314ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  223614ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  224313ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  227619ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  228316ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  231616ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  232313ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  235614ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  236314ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  239448ms] [LOG] [vite] server connection lost. Polling for restart... @ http://localhost:5174/@vite/client:559
+[  239452ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  239613ms] [LOG] [BgAgent] Goal complete: scan_room @ http://localhost:5174/src/brain/background_agent.js:127
+[  240313ms] [LOG] [BgAgent] Running background goal: scan_room — Refreshing 2 stale object(s): wall_W, wall_S @ http://localhost:5174/src/brain/background_agent.js:121
+[  240670ms] [LOG] ═══════════════════════════════════════════ @ http://localhost:5174/main.js:48
+[  240670ms] [LOG]   CausalBot — Universal Robot Framework @ http://localhost:5174/main.js:49
+[  240670ms] [LOG] ═══════════════════════════════════════════ @ http://localhost:5174/main.js:50
+[  240670ms] [LOG]  @ http://localhost:5174/main.js:51
+[  240670ms] [LOG] [Boot] Loading manifest... @ http://localhost:5174/main.js:55
+[  240670ms] [LOG] [Manifest] Loading: ./manifests/default-bot.json @ http://localhost:5174/src/core/manifest.js:56
+[  240678ms] [LOG] [Manifest] Loaded "CausalBot Alpha" v1.0.0 @ http://localhost:5174/src/core/manifest.js:77
+[  240678ms] [LOG] [Manifest]   Morphology: biped @ http://localhost:5174/src/core/manifest.js:78
+[  240678ms] [LOG] [Manifest]   Joints: 10 @ http://localhost:5174/src/core/manifest.js:79
+[  240678ms] [LOG] [Manifest]   Capabilities: 7 @ http://localhost:5174/src/core/manifest.js:80
+[  240678ms] [LOG] [Manifest]   Sensors: 3 @ http://localhost:5174/src/core/manifest.js:81
+[  240678ms] [LOG] [Boot] Robot: "CausalBot Alpha" (biped) @ http://localhost:5174/main.js:57
+[  240678ms] [LOG]  @ http://localhost:5174/main.js:58
+[  240679ms] [LOG]  @ http://localhost:5174/main.js:62
+[  240679ms] [LOG] [Boot] Initializing renderer... @ http://localhost:5174/main.js:65
+[  240694ms] [WARNING] RGBELoader has been deprecated. Please use HDRLoader instead. @ http://localhost:5174/node_modules/.vite/deps/three_examples_jsm_loaders_RGBELoader__js.js?v=891aee09:268
+[  240726ms] [LOG] [Render] HDRI loaded: /sky3.hdr @ http://localhost:5174/src/render/scene.js:287
+[  240727ms] [LOG] [Render] Scene initialized @ http://localhost:5174/src/render/scene.js:108
+[  240728ms] [LOG]  @ http://localhost:5174/main.js:70
+[  240728ms] [LOG] [Boot] Initializing physics... @ http://localhost:5174/main.js:73
+[  240753ms] [WARNING] using deprecated parameters for the initialization function; pass a single object instead @ http://localhost:5174/node_modules/.vite/deps/@dimforge_rapier3d-compat.js?v=891aee09:2516
+[  240782ms] [LOG] [Physics] Rapier3D world initialized @ http://localhost:5174/src/physics/world.js:45
+[  240783ms] [LOG]  @ http://localhost:5174/main.js:85
+[  240783ms] [LOG] [Boot] Building environment... @ http://localhost:5174/main.js:88
+[  240783ms] [LOG] [Env] Initialized (arena ±16 m) @ http://localhost:5174/src/env/objects.js:50
+[  240784ms] [LOG] [Env] Boundary walls created @ http://localhost:5174/src/env/objects.js:95
+[  240785ms] [LOG] [Env] Default layout loaded @ http://localhost:5174/src/env/objects.js:336
+[  240785ms] [LOG] [Env] Obstacles: 11, goal at (8, -8) @ http://localhost:5174/src/env/objects.js:337
+[  240785ms] [LOG]  @ http://localhost:5174/main.js:91
+[  240785ms] [LOG] [Boot] Loading robot... @ http://localhost:5174/main.js:94
+[  240785ms] [LOG] [Adapter] Loading robot: "CausalBot Alpha" @ http://localhost:5174/src/core/adapter.js:407
+[  240815ms] [LOG] [Adapter] Model loaded: /robot.glb @ http://localhost:5174/src/core/adapter.js:456
+[  240815ms] [LOG] [Adapter] Found 4 bones/objects in model @ http://localhost:5174/src/core/adapter.js:544
+[  240815ms] [WARNING] [Adapter]   No bone found for joint "left_shoulder" — will use virtual joint @ http://localhost:5174/src/core/adapter.js:552
+[  240815ms] [WARNING] [Adapter]   No bone found for joint "left_elbow" — will use virtual joint @ http://localhost:5174/src/core/adapter.js:552
+[  240815ms] [WARNING] [Adapter]   No bone found for joint "right_shoulder" — will use virtual joint @ http://localhost:5174/src/core/adapter.js:552
+[  240815ms] [WARNING] [Adapter]   No bone found for joint "right_elbow" — will use virtual joint @ http://localhost:5174/src/core/adapter.js:552
+[  240815ms] [WARNING] [Adapter]   No bone found for joint "left_hip" — will use virtual joint @ http://localhost:5174/src/core/adapter.js:552
+[  240815ms] [WARNING] [Adapter]   No bone found for joint "left_knee" — will use virtual joint @ http://localhost:5174/src/core/adapter.js:552
+[  240815ms] [WARNING] [Adapter]   No bone found for joint "right_hip" — will use virtual joint @ http://localhost:5174/src/core/adapter.js:552
+[  240815ms] [WARNING] [Adapter]   No bone found for joint "right_knee" — will use virtual joint @ http://localhost:5174/src/core/adapter.js:552
+[  240815ms] [WARNING] [Adapter]   No bone found for joint "head_pan" — will use virtual joint @ http://localhost:5174/src/core/adapter.js:552
+[  240816ms] [WARNING] [Adapter]   No bone found for joint "head_tilt" — will use virtual joint @ http://localhost:5174/src/core/adapter.js:552
+[  240816ms] [WARNING] [Adapter] KinematicCharacterController unavailable — falling back to direct movement: controller.setSnapToGroundDistance is not a function @ http://localhost:5174/src/core/adapter.js:652
+[  240816ms] [LOG] [Adapter] Robot "CausalBot Alpha" ready. @ http://localhost:5174/src/core/adapter.js:425
+[  240816ms] [LOG] [Adapter]   Bones mapped: 0/10 @ http://localhost:5174/src/core/adapter.js:426
+[  240816ms] [LOG] [Adapter]   Physics body: capsule @ http://localhost:5174/src/core/adapter.js:427
+[  240816ms] [LOG] [Adapter]   Collision controller: yes @ http://localhost:5174/src/core/adapter.js:428
+[  240816ms] [LOG]  @ http://localhost:5174/main.js:108
+[  240816ms] [LOG] [Boot] Initializing perception... @ http://localhost:5174/main.js:111
+[  240816ms] [LOG] [Observer] Initialized @ http://localhost:5174/src/perception/observer.js:31
+[  240816ms] [LOG]  @ http://localhost:5174/main.js:114
+[  240816ms] [LOG] [Boot] Initializing skills... @ http://localhost:5174/main.js:117
+[  240816ms] [LOG] [Skills] Registry initialized: 15 skills available @ http://localhost:5174/src/skills/registry.js:56
+[  240816ms] [LOG] [Boot] Available skills: navigate_to, move_to_position, rotate, spin, pick_up, release, scan_room, scan_for, stop, patrol, return_home, survey_grid, explore, find_goal, wave @ http://localhost:5174/main.js:119
+[  240816ms] [LOG]  @ http://localhost:5174/main.js:120
+[  240816ms] [LOG] [Boot] Setting up engine... @ http://localhost:5174/main.js:123
+[  240816ms] [WARNING] THREE.THREE.Clock: This module has been deprecated. Please use THREE.Timer instead. @ http://localhost:5174/node_modules/.vite/deps/chunk-UVLSQTRI.js?v=891aee09:296
+[  240816ms] [LOG] [Engine] Initialized with robot: "CausalBot Alpha" @ http://localhost:5174/src/core/engine.js:57
+[  240816ms] [LOG] [Engine] Registered system: physics @ http://localhost:5174/src/core/engine.js:71
+[  240816ms] [LOG] [Engine] Registered system: perception @ http://localhost:5174/src/core/engine.js:71
+[  240816ms] [LOG] [Engine] Registered system: render @ http://localhost:5174/src/core/engine.js:71
+[  240816ms] [LOG] [Boot] Initializing UI... @ http://localhost:5174/main.js:172
+[  240817ms] [LOG] [Dashboard] Initialized @ http://localhost:5174/src/ui/dashboard.js:139
+[  240817ms] [LOG] [Controls] Initialized @ http://localhost:5174/src/ui/controls.js:75
+[  240818ms] [LOG] [Visualizer] Ready  V=all  L=lidar  P=path  G=grid @ http://localhost:5174/src/debug/visualizer.js:85
+[  240818ms] [LOG]  @ http://localhost:5174/main.js:214
+[  240818ms] [LOG]  @ http://localhost:5174/main.js:217
+[  240818ms] [LOG] ═══════════════════════════════════════════ @ http://localhost:5174/main.js:218
+[  240818ms] [LOG]   All systems ready. Starting simulation. @ http://localhost:5174/main.js:219
+[  240818ms] [LOG] ═══════════════════════════════════════════ @ http://localhost:5174/main.js:220
+[  240818ms] [LOG]  @ http://localhost:5174/main.js:221
+[  240818ms] [LOG] LLM Description for this robot: @ http://localhost:5174/main.js:222
+[  240818ms] [LOG] You are controlling a robot named "CausalBot Alpha".
+Morphology: biped
+Mass: 5kg
+
+## What you CAN do:
+- locomotion:ground: Navigate on flat and mildly uneven ground using bipedal locomotion.
+- locomotion:rotate: Rotate in place around the vertical axis.
+- manipulation:grasp: Pick up and carry lightweight objects using the left gripper.
+- manipulation:push: Push objects along the ground using the body or arms.
+- perception:lidar: Sense distances in an 11-ray horizontal fan around the robot.
+- perception:camera: Forward-facing visual sensor for object recognition.
+- perception:scan: Perform a 360-degree rotation scan to discover nearby objects.
+
+## Hard constraints (NEVER violate these):
+- Maximum speed: 2.5 m/s
+- Maximum rotation: 3.14 rad/s
+- Maximum reach: 0.65 m
+- Maximum lift capacity: 2 kg
+- CANNOT fly
+- CANNOT swim
+- CANNOT climb
+
+## Joints (movable parts):
+- left_shoulder (revolute, axis=x): range [-90°, 180°], group="left_arm"
+- left_elbow (revolute, axis=x): range [0°, 150°], group="left_arm"
+- right_shoulder (revolute, axis=x): range [-90°, 180°], group="right_arm"
+- right_elbow (revolute, axis=x): range [0°, 150°], group="right_arm"
+- left_hip (revolute, axis=x): range [-45°, 90°], group="left_leg"
+- left_knee (revolute, axis=x): range [0°, 120°], group="left_leg"
+- right_hip (revolute, axis=x): range [-45°, 90°], group="right_leg"
+- right_knee (revolute, axis=x): range [0°, 120°], group="right_leg"
+- head_pan (revolute, axis=y): range [-90°, 90°], group="head"
+- head_tilt (revolute, axis=x): range [-30°, 45°], group="head"
+
+## Sensors (how you perceive the world):
+- lidar_front (lidar): range=8m, fov=180°
+- camera_front (camera): range=10m, fov=60°
+- imu (imu): range=?m, fov=?°
+
+## Important rules:
+- You must SCAN/LOOK before acting on objects you cannot currently see.
+- Always check if an action is within your constraints before attempting it.
+- If an instruction is physically impossible for your morphology, explain WHY and suggest alternatives. @ http://localhost:5174/main.js:223
+[  240818ms] [LOG]  @ http://localhost:5174/main.js:224
+[  240818ms] [LOG] [Engine] Starting simulation loop @ http://localhost:5174/src/core/engine.js:86
+[  240818ms] [LOG] [BgAgent] Background agent started. @ http://localhost:5174/src/brain/background_agent.js:56
+[  240829ms] [WARNING] THREE.WebGLShadowMap: PCFSoftShadowMap has been deprecated. Using PCFShadowMap instead. @ http://localhost:5174/node_modules/.vite/deps/chunk-UVLSQTRI.js?v=891aee09:296
+[  243839ms] [LOG] [vite] server connection lost. Polling for restart... @ http://localhost:5174/@vite/client:559
+[  243846ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_RESET @ http://localhost:5174/:0
+[  244853ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  245863ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  246869ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  247876ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  248885ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  249892ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  250907ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  251912ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  252915ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  253924ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  254824ms] [LOG] [BgAgent] Running background goal: explore — Autonomous exploration pass @ http://localhost:5174/src/brain/background_agent.js:121
+[  254824ms] [WARNING] [Nav] No path found — attempting direct move @ http://localhost:5174/src/nav/pathfinder.js:290
+[  254931ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  255940ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  256951ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  257957ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  258964ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  259973ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  260980ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  261992ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  262998ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  263235ms] [WARNING] [Nav] No path found — attempting direct move @ http://localhost:5174/src/nav/pathfinder.js:290
+[  264004ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  265017ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  266020ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  266082ms] [WARNING] [Nav] No path found — attempting direct move @ http://localhost:5174/src/nav/pathfinder.js:290
+[  267027ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  268041ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  269049ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  269223ms] [WARNING] [Nav] No path found — attempting direct move @ http://localhost:5174/src/nav/pathfinder.js:290
+[  270053ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  271061ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  271491ms] [LOG] [BgAgent] Goal complete: explore @ http://localhost:5174/src/brain/background_agent.js:127
+[  272073ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  273080ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  274085ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  275092ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  276103ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  277107ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  278117ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  279128ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  280140ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  281143ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  282149ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  283156ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  284169ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  285173ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  286184ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0
+[  287187ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5174/:0

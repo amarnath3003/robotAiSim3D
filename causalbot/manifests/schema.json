@@ -1,0 +1,309 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://causalbot.dev/manifest.schema.json",
+  "title": "CausalBot Robot Manifest",
+  "description": "Describes a robot's morphology, constraints, sensors, and capabilities for the CausalBot universal adapter. Designed to map 1:1 to URDF for sim-to-real transfer.",
+  "type": "object",
+  "required": ["name", "version", "model", "morphology", "joints", "capabilities", "constraints", "sensors"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Human-readable name for this robot configuration."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version of this manifest (for skill compatibility tracking)."
+    },
+    "model": {
+      "type": "object",
+      "description": "3D model configuration.",
+      "required": ["path", "format"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Relative path to the 3D model file."
+        },
+        "format": {
+          "type": "string",
+          "enum": ["glb", "gltf", "urdf"],
+          "description": "Model file format."
+        },
+        "scale": {
+          "type": "number",
+          "default": 1.0,
+          "description": "Uniform scale factor applied on load."
+        },
+        "originOffset": {
+          "type": "object",
+          "description": "Offset from model origin to robot center of mass.",
+          "properties": {
+            "x": { "type": "number", "default": 0 },
+            "y": { "type": "number", "default": 0 },
+            "z": { "type": "number", "default": 0 }
+          }
+        }
+      }
+    },
+    "morphology": {
+      "type": "string",
+      "enum": [
+        "bipedal",
+        "quadrupedal",
+        "wheeled",
+        "bipedal-wheeled",
+        "arm-fixed",
+        "arm-mobile",
+        "drone",
+        "snake",
+        "custom"
+      ],
+      "description": "High-level morphology class. Used by the LLM to reason about locomotion strategies."
+    },
+    "physics": {
+      "type": "object",
+      "description": "Physics body configuration for the simulation.",
+      "properties": {
+        "mass": {
+          "type": "number",
+          "minimum": 0.01,
+          "description": "Total mass in kg."
+        },
+        "colliderType": {
+          "type": "string",
+          "enum": ["capsule", "box", "cylinder", "convexHull", "trimesh"],
+          "default": "capsule",
+          "description": "Primary collider shape."
+        },
+        "colliderDimensions": {
+          "type": "object",
+          "description": "Dimensions for the collider (interpretation depends on colliderType).",
+          "properties": {
+            "radius": { "type": "number" },
+            "height": { "type": "number" },
+            "width": { "type": "number" },
+            "depth": { "type": "number" }
+          }
+        },
+        "friction": { "type": "number", "default": 0.7, "minimum": 0, "maximum": 1 },
+        "restitution": { "type": "number", "default": 0.1, "minimum": 0, "maximum": 1 },
+        "linearDamping": { "type": "number", "default": 0.5 },
+        "angularDamping": { "type": "number", "default": 0.8 }
+      }
+    },
+    "joints": {
+      "type": "array",
+      "description": "Joint definitions. Maps to URDF <joint> elements for sim-to-real.",
+      "items": {
+        "type": "object",
+        "required": ["name", "type"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Unique joint identifier (matches bone name in GLB or joint name in URDF)."
+          },
+          "type": {
+            "type": "string",
+            "enum": ["revolute", "continuous", "prismatic", "fixed", "floating", "planar"],
+            "description": "Joint type (URDF-compatible naming)."
+          },
+          "axis": {
+            "type": "string",
+            "enum": ["x", "y", "z", "-x", "-y", "-z"],
+            "default": "z",
+            "description": "Rotation/translation axis."
+          },
+          "limits": {
+            "type": "object",
+            "description": "Joint limits (degrees for revolute, meters for prismatic).",
+            "properties": {
+              "lower": { "type": "number" },
+              "upper": { "type": "number" },
+              "velocity": { "type": "number", "description": "Max velocity (rad/s or m/s)." },
+              "effort": { "type": "number", "description": "Max force/torque (N or Nm)." }
+            }
+          },
+          "parent": {
+            "type": "string",
+            "description": "Parent link/bone name."
+          },
+          "child": {
+            "type": "string",
+            "description": "Child link/bone name."
+          },
+          "restPosition": {
+            "type": "number",
+            "default": 0,
+            "description": "Default resting position (degrees or meters)."
+          },
+          "group": {
+            "type": "string",
+            "description": "Logical group (e.g., 'left_arm', 'right_leg', 'head'). Used by the LLM for coordinated movement."
+          }
+        }
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "description": "Declarative list of what this robot CAN do. The LLM uses this for feasibility checking.",
+      "items": {
+        "type": "object",
+        "required": ["id", "description"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Machine-readable capability ID (e.g., 'locomotion:ground', 'manipulation:grasp')."
+          },
+          "description": {
+            "type": "string",
+            "description": "Natural language description for the LLM (e.g., 'Can walk on flat ground at up to 2.5 m/s')."
+          },
+          "parameters": {
+            "type": "object",
+            "description": "Capability-specific parameters.",
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "description": "Hard physical constraints. The LLM checks these BEFORE attempting any action.",
+      "properties": {
+        "maxSpeed": { "type": "number", "description": "Maximum linear speed (m/s)." },
+        "maxAngularSpeed": { "type": "number", "description": "Maximum rotation speed (rad/s)." },
+        "maxReach": { "type": "number", "description": "Maximum manipulation reach from body center (m)." },
+        "maxPayload": { "type": "number", "description": "Maximum object mass the robot can lift (kg)." },
+        "maxJumpHeight": { "type": "number", "description": "Maximum jump height (m). 0 = cannot jump." },
+        "canFly": { "type": "boolean", "default": false },
+        "canSwim": { "type": "boolean", "default": false },
+        "canClimb": { "type": "boolean", "default": false },
+        "balanceRequired": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether the robot needs active balance (bipedal=true, wheeled=false)."
+        },
+        "custom": {
+          "type": "object",
+          "description": "Robot-specific constraints in natural language for the LLM.",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "sensors": {
+      "type": "array",
+      "description": "Sensor configuration. Defines the robot's perception capabilities.",
+      "items": {
+        "type": "object",
+        "required": ["id", "type"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique sensor identifier."
+          },
+          "type": {
+            "type": "string",
+            "enum": ["lidar", "camera", "depth_camera", "imu", "contact", "proximity", "joint_encoder"],
+            "description": "Sensor type."
+          },
+          "position": {
+            "type": "object",
+            "description": "Mount position relative to robot origin.",
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" },
+              "z": { "type": "number" }
+            }
+          },
+          "orientation": {
+            "type": "object",
+            "description": "Mount orientation (euler degrees).",
+            "properties": {
+              "pitch": { "type": "number" },
+              "yaw": { "type": "number" },
+              "roll": { "type": "number" }
+            }
+          },
+          "config": {
+            "type": "object",
+            "description": "Sensor-specific configuration.",
+            "properties": {
+              "fov": { "type": "number", "description": "Field of view in degrees." },
+              "range": { "type": "number", "description": "Maximum detection range (m)." },
+              "rays": { "type": "integer", "description": "Number of rays (lidar)." },
+              "resolution": {
+                "type": "object",
+                "description": "Camera resolution.",
+                "properties": {
+                  "width": { "type": "integer" },
+                  "height": { "type": "integer" }
+                }
+              },
+              "updateRate": { "type": "number", "description": "Sensor update frequency (Hz)." }
+            }
+          }
+        }
+      }
+    },
+    "actionSpace": {
+      "type": "object",
+      "description": "Defines the RL action space. Maps to Gymnasium spaces for training.",
+      "properties": {
+        "type": { "type": "string", "enum": ["continuous", "discrete", "multi_discrete"] },
+        "dimensions": { "type": "integer", "description": "Total dimensionality of action vector." },
+        "channels": {
+          "type": "array",
+          "description": "Named action channels with their ranges.",
+          "items": {
+            "type": "object",
+            "required": ["name", "low", "high"],
+            "properties": {
+              "name": { "type": "string" },
+              "low": { "type": "number" },
+              "high": { "type": "number" },
+              "description": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "observationSpace": {
+      "type": "object",
+      "description": "Defines what the RL agent observes. Maps to Gymnasium observation space.",
+      "properties": {
+        "dimensions": { "type": "integer" },
+        "channels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "size"],
+            "properties": {
+              "name": { "type": "string" },
+              "size": { "type": "integer" },
+              "low": { "type": "number" },
+              "high": { "type": "number" },
+              "source": { "type": "string", "description": "Which sensor/system provides this data." }
+            }
+          }
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Optional metadata for documentation and tooling.",
+      "properties": {
+        "author": { "type": "string" },
+        "description": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "realWorldEquivalent": {
+          "type": "string",
+          "description": "If this simulated robot maps to a real platform (e.g., 'Boston Dynamics Spot', 'UR5e')."
+        },
+        "urdfPath": {
+          "type": "string",
+          "description": "Path to the corresponding URDF file for sim-to-real."
+        }
+      }
+    }
+  }
+}

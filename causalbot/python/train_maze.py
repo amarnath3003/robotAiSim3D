@@ -84,7 +84,11 @@ class MazeEnv(gym.Env):
 
         self._state_event = threading.Event()
         self._reset_event = threading.Event()
-        self._lock = threading.Lock()
+        self._lock        = threading.Lock()
+
+        # C6 fix: real asyncio.Lock for protecting self.websocket inside the async handler.
+        # threading.Lock() is NOT awaitable; the old _lock_async stub did nothing.
+        self._ws_lock = None   # created lazily inside the event loop
 
         # WebSocket server in daemon thread
         self.loop      = asyncio.new_event_loop()
@@ -103,20 +107,23 @@ class MazeEnv(gym.Env):
     # ── WebSocket server ──────────────────────────────────────────────────────
     def _start_server(self):
         asyncio.set_event_loop(self.loop)
+        # C6 fix: create the asyncio.Lock inside the event loop where it will be used
+        self._ws_lock = asyncio.Lock()
         async def run():
             async with websockets.serve(self._ws_handler, 'localhost', WS_PORT):
                 await asyncio.Future()
         self.loop.run_until_complete(run())
 
     async def _ws_handler(self, websocket):
-        # Close any stale connection
-        async with self._lock_async():
-            if self.websocket is not None:
-                try:
-                    await self.websocket.close()
-                except Exception:
-                    pass
+        # C6 fix: use a real asyncio.Lock to atomically swap self.websocket
+        async with self._ws_lock:
+            old = self.websocket
             self.websocket = websocket
+        if old is not None:
+            try:
+                await old.close()
+            except Exception:
+                pass
         print('\n[OK] Maze JS client connected!\n')
         try:
             async for raw in websocket:
@@ -140,12 +147,6 @@ class MazeEnv(gym.Env):
         except websockets.exceptions.ConnectionClosed:
             print('[MazeEnv] JS client disconnected.')
             self.websocket = None
-
-    # Async context manager shim for the lock (threading.Lock isn't await-able)
-    class _lock_async:
-        def __init__(self): pass
-        async def __aenter__(self): return self
-        async def __aexit__(self, *_): pass
 
     # ── Observation processing ─────────────────────────────────────────────────
     def _process_obs(self, obs_list):
@@ -195,7 +196,10 @@ class MazeEnv(gym.Env):
         return self.state.copy(), {}
 
     def step(self, action):
-        if self.websocket is None:
+        # S2 fix: read websocket under the threading lock to avoid a TOCTOU race
+        with self._lock:
+            ws = self.websocket
+        if ws is None:
             return self.state.copy(), -1.0, True, False, {}
 
         linear  = float(np.clip(action[0], 0.0, 2.5))
@@ -205,7 +209,7 @@ class MazeEnv(gym.Env):
         msg = json.dumps({'type': 'action', 'action': [linear, angular]})
         try:
             asyncio.run_coroutine_threadsafe(
-                self.websocket.send(msg), self.loop
+                ws.send(msg), self.loop
             ).result(timeout=5)
             got_state = self._state_event.wait(timeout=5)
             if not got_state:
@@ -324,14 +328,16 @@ class MazeProgressCallback(BaseCallback):
 
 # ─── Checkpoint discovery ─────────────────────────────────────────────────────
 def find_latest_checkpoint(model_dir='models'):
-    """Return the highest-step checkpoint, preferring *_maze_* over base ones."""
+    """Return (path, type) tuple for the highest-step checkpoint.
+    Q1 fix: always return a 2-tuple so callers can safely unpack result[0]/result[1].
+    """
     # Prefer previously-saved maze checkpoints
     maze_cps = glob.glob(os.path.join(model_dir, 'causalbot_maze_*_steps.zip'))
     if maze_cps:
         def step_key(p):
             try: return int(os.path.basename(p).split('_steps')[0].split('_')[-1])
             except: return 0
-        return max(maze_cps, key=step_key)
+        return max(maze_cps, key=step_key), 'maze'   # Q1: was missing ', maze' tuple tag
 
     # Fall back to room-training checkpoints (curriculum transfer)
     final = os.path.join(model_dir, 'causalbot_ppo_final.zip')

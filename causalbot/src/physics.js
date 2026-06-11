@@ -266,11 +266,15 @@ function setupObject(id, cfg) {
 export function stepPhysics(delta) {
   if (!world) return
 
-  // Sync AI robot kinematic body to its visual mesh position
-  const aiMesh = state.scene.three?.getObjectByName('aiRobot')
-  if (aiMesh && state.robot._body) {
-    state.robot._body.setNextKinematicTranslation(aiMesh.position)
-    state.robot._body.setNextKinematicRotation(aiMesh.quaternion)
+  // Sync AI robot kinematic body to its visual mesh position.
+  // In RL mode updateRL() owns the kinematic target directly via state.robot.position
+  // so we skip this to prevent the stale-mesh overwrite (P1 fix).
+  if (state.controlMode !== 'rl') {
+    const aiMesh = state.scene.three?.getObjectByName('aiRobot')
+    if (aiMesh && state.robot._body) {
+      state.robot._body.setNextKinematicTranslation(aiMesh.position)
+      state.robot._body.setNextKinematicRotation(aiMesh.quaternion)
+    }
   }
 
   // Fixed-step accumulator — decoupled from frame rate
@@ -482,8 +486,8 @@ export function releaseObjectPhysics(objectId, robotPos, forwardAngle = 0) {
   const obj = state.world.objects[objectId]
   if (!obj?._body) return
 
-  // Switch back to dynamic
-  obj._body.setBodyType(2, true)
+  // Switch back to dynamic so the object falls naturally
+  obj._body.setBodyType(0, true)
 
   // Place slightly in front of robot
   obj._body.setTranslation(

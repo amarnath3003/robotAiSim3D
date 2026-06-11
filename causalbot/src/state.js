@@ -1,6 +1,6 @@
 export const state = {
   robot: {
-    position: new Float32Array([0, 0.35, 2]),
+    position: new Float32Array([0, 0.35, 1.8]),
     rotation: 0,
     status: 'idle', // idle | thinking | executing | failed
     armAngle: 0,

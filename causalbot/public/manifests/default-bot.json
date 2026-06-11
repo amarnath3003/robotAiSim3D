@@ -1,0 +1,244 @@
+{
+  "name": "CausalBot Alpha",
+  "version": "1.0.0",
+  "description": "A ground robot with one arm (left), 11-ray LiDAR, and forward-facing camera. Designed for navigation, object interaction, and reinforcement learning. The left arm is a 2-DOF shoulder+elbow: shoulder range -90° (fully down) to 180° (fully up), elbow range 0° to 150°.",
+  "morphology": "biped",
+
+  "model": {
+    "path": "/robot.glb",
+    "format": "glb",
+    "scale": 1.0,
+    "originOffset": { "x": 0, "y": 0, "z": 0 },
+    "ignorePrefixes": ["robot"]
+  },
+
+  "physics": {
+    "mass": 5.0,
+    "colliderType": "capsule",
+    "capsuleHalfHeight": 0.35,
+    "capsuleRadius": 0.25,
+    "friction": 0.7,
+    "restitution": 0.1,
+    "linearDamping": 0.5,
+    "angularDamping": 0.8
+  },
+
+  "joints": [
+    {
+      "name": "left_shoulder",
+      "type": "revolute",
+      "axis": "-x",
+      "parent": "torso",
+      "child": "left_upper_arm",
+      "limits": { "lower": -90, "upper": 90, "velocity": 3.0, "effort": 10.0 },
+      "restPosition": 0,
+      "group": "left_arm"
+    },
+    {
+      "name": "left_elbow",
+      "type": "revolute",
+      "axis": "x",
+      "parent": "left_upper_arm",
+      "child": "left_forearm",
+      "limits": { "lower": 0, "upper": 150, "velocity": 3.0, "effort": 8.0 },
+      "restPosition": 0,
+      "group": "left_arm"
+    },
+    {
+      "name": "right_shoulder",
+      "type": "revolute",
+      "axis": "x",
+      "parent": "torso",
+      "child": "right_upper_arm",
+      "limits": { "lower": -90, "upper": 180, "velocity": 3.0, "effort": 10.0 },
+      "restPosition": 0,
+      "group": "right_arm"
+    },
+    {
+      "name": "right_elbow",
+      "type": "revolute",
+      "axis": "x",
+      "parent": "right_upper_arm",
+      "child": "right_forearm",
+      "limits": { "lower": 0, "upper": 150, "velocity": 3.0, "effort": 8.0 },
+      "restPosition": 0,
+      "group": "right_arm"
+    },
+    {
+      "name": "left_hip",
+      "type": "revolute",
+      "axis": "x",
+      "parent": "pelvis",
+      "child": "left_thigh",
+      "limits": { "lower": -45, "upper": 90, "velocity": 4.0, "effort": 15.0 },
+      "restPosition": 0,
+      "group": "left_leg"
+    },
+    {
+      "name": "left_knee",
+      "type": "revolute",
+      "axis": "x",
+      "parent": "left_thigh",
+      "child": "left_shin",
+      "limits": { "lower": 0, "upper": 120, "velocity": 4.0, "effort": 12.0 },
+      "restPosition": 0,
+      "group": "left_leg"
+    },
+    {
+      "name": "right_hip",
+      "type": "revolute",
+      "axis": "x",
+      "parent": "pelvis",
+      "child": "right_thigh",
+      "limits": { "lower": -45, "upper": 90, "velocity": 4.0, "effort": 15.0 },
+      "restPosition": 0,
+      "group": "right_leg"
+    },
+    {
+      "name": "right_knee",
+      "type": "revolute",
+      "axis": "x",
+      "parent": "right_thigh",
+      "child": "right_shin",
+      "limits": { "lower": 0, "upper": 120, "velocity": 4.0, "effort": 12.0 },
+      "restPosition": 0,
+      "group": "right_leg"
+    },
+    {
+      "name": "head_pan",
+      "type": "revolute",
+      "axis": "y",
+      "parent": "neck",
+      "child": "head",
+      "limits": { "lower": -90, "upper": 90, "velocity": 2.5, "effort": 3.0 },
+      "restPosition": 0,
+      "group": "head"
+    },
+    {
+      "name": "head_tilt",
+      "type": "revolute",
+      "axis": "x",
+      "parent": "neck",
+      "child": "head",
+      "limits": { "lower": -30, "upper": 45, "velocity": 2.5, "effort": 3.0 },
+      "restPosition": 0,
+      "group": "head"
+    }
+  ],
+
+  "capabilities": [
+    {
+      "id": "locomotion:ground",
+      "description": "Navigate on flat and mildly uneven ground using bipedal locomotion.",
+      "parameters": {
+        "maxSpeed": 2.5,
+        "maxAngularSpeed": 3.14
+      }
+    },
+    {
+      "id": "locomotion:rotate",
+      "description": "Rotate in place around the vertical axis.",
+      "parameters": {
+        "maxAngularSpeed": 3.14
+      }
+    },
+    {
+      "id": "manipulation:grasp",
+      "description": "Pick up and carry lightweight objects using the left gripper.",
+      "parameters": {
+        "hand": "left",
+        "maxPayload": 2.0,
+        "maxReach": 0.65
+      }
+    },
+    {
+      "id": "manipulation:push",
+      "description": "Push objects along the ground using the body or arms.",
+      "parameters": {
+        "maxForce": 20.0
+      }
+    },
+    {
+      "id": "perception:lidar",
+      "description": "Sense distances in an 11-ray horizontal fan around the robot.",
+      "parameters": {
+        "rays": 11,
+        "range": 8.0,
+        "fov": 180
+      }
+    },
+    {
+      "id": "perception:camera",
+      "description": "Forward-facing visual sensor for object recognition.",
+      "parameters": {
+        "fov": 60,
+        "range": 10.0
+      }
+    },
+    {
+      "id": "perception:scan",
+      "description": "Perform a 360-degree rotation scan to discover nearby objects.",
+      "parameters": {
+        "sweepTime": 3.2
+      }
+    }
+  ],
+
+  "constraints": {
+    "maxSpeed": 2.5,
+    "maxAngularSpeed": 3.14,
+    "maxReach": 0.65,
+    "maxPayload": 2.0,
+    "maxJumpHeight": 0,
+    "canFly": false,
+    "canSwim": false,
+    "canClimb": false,
+    "balanceRequired": true
+  },
+
+  "sensors": [
+    {
+      "id": "lidar_front",
+      "type": "lidar",
+      "position": { "x": 0, "y": 0.5, "z": 0 },
+      "config": {
+        "rays": 11,
+        "range": 8.0,
+        "fov": 180,
+        "mountHeight": 0.5
+      }
+    },
+    {
+      "id": "camera_front",
+      "type": "camera",
+      "position": { "x": 0, "y": 0.7, "z": 0.15 },
+      "config": {
+        "fov": 60,
+        "range": 10.0,
+        "resolution": [320, 240]
+      }
+    },
+    {
+      "id": "imu",
+      "type": "imu",
+      "position": { "x": 0, "y": 0.3, "z": 0 },
+      "config": {
+        "updateRate": 60
+      }
+    }
+  ],
+
+  "actionSpace": {
+    "type": "continuous",
+    "channels": [
+      { "name": "linear_speed",  "low": -2.5,  "high": 2.5,  "description": "Forward/backward velocity (m/s)" },
+      { "name": "angular_speed", "low": -3.14, "high": 3.14, "description": "Rotation speed (rad/s)" }
+    ]
+  },
+
+  "observationSpace": {
+    "type": "continuous",
+    "dims": 14,
+    "description": "[ robot_x, robot_z, heading, goal_dx, goal_dz, dist_to_goal, lidar×8 ]"
+  }
+}

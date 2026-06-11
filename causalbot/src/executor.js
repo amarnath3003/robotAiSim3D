@@ -27,7 +27,7 @@ function buildContext(instruction) {
     grab: (objectId) => {
       const obj = getObject(objectId)
       if (!obj || !obj.snapable) return false
-      if (obj._body) obj._body.setBodyType(0)
+      if (obj._body) obj._body.setBodyType(1)  // Fixed — disable physics while held
       obj.status             = 'held'
       state.robot.heldObject = obj.id
       state.robot.eyeColor   = 0x00ff88

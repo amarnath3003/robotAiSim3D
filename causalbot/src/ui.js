@@ -112,146 +112,172 @@ function _buildRLDashboard() {
         <span class="rld-title">RL Agent</span>
         <div class="rld-conn-badge" id="rld-conn-badge">OFFLINE</div>
       </div>
-      <div class="rld-mode-row">
-        <span class="rld-mode-label">MODE</span>
+      <div class="rld-mode-tabs">
+        <button class="rld-tab" id="rld-tab-ai">AI</button>
+        <button class="rld-tab" id="rld-tab-debug">Debug</button>
+        <button class="rld-tab" id="rld-tab-rl">RL</button>
+      </div>
+    </div>
+
+    <div id="rld-body">
+
+      <div class="rld-section">
+        <div class="rld-section-title">AGENT MODE</div>
         <span class="rld-mode-val" id="rld-mode">IDLE</span>
       </div>
-    </div>
 
-    <div class="rld-section">
-      <div class="rld-section-title">ROBOT POSITION</div>
-      <div class="rld-kv-row">
-        <span class="rld-key">X</span><span class="rld-val" id="rld-rx">—</span>
-        <span class="rld-key" style="margin-left:12px">Z</span><span class="rld-val" id="rld-rz">—</span>
-      </div>
-    </div>
-
-    <div class="rld-section">
-      <div class="rld-section-title">GOAL</div>
-      <div class="rld-kv-row">
-        <span class="rld-key">X</span><span class="rld-val" id="rld-gx">—</span>
-        <span class="rld-key" style="margin-left:12px">Z</span><span class="rld-val" id="rld-gz">—</span>
-        <span class="rld-key" style="margin-left:12px">DIST</span><span class="rld-val" id="rld-dist">—</span>
-      </div>
-      <div class="rld-goal-inputs">
-        <input class="rld-coord-input" id="rld-goal-x" type="number" step="0.1" min="-2.8" max="2.8" placeholder="x" />
-        <input class="rld-coord-input" id="rld-goal-z" type="number" step="0.1" min="-2.8" max="2.8" placeholder="z" />
-        <button class="rld-btn" id="rld-set-goal">Set Goal</button>
-      </div>
-    </div>
-
-    <div class="rld-section">
-      <div class="rld-section-title">LAST ACTION</div>
-      <div class="rld-kv-row">
-        <span class="rld-key">LIN</span><span class="rld-val" id="rld-lin">0.00</span>
-        <span class="rld-key" style="margin-left:8px">ROT</span><span class="rld-val" id="rld-ang">0.00</span>
-        <span class="rld-key" style="margin-left:8px">ARM</span><span class="rld-val" id="rld-arm">0.00</span>
-        <span class="rld-key" style="margin-left:8px">JMP</span><span class="rld-val" id="rld-jmp">0</span>
-      </div>
-      <div class="rld-action-bars">
-        <div class="rld-bar-wrap">
-          <div class="rld-bar-label">fwd</div>
-          <div class="rld-bar-track"><div class="rld-bar-fill rld-bar-linear" id="rld-bar-lin"></div></div>
+      <div class="rld-section">
+        <div class="rld-section-title">NAVIGATION</div>
+        <div class="rld-nav-grid">
+          <span class="rld-key">ROBOT</span>
+          <span class="rld-key">X</span><span class="rld-val" id="rld-rx">—</span>
+          <span class="rld-key">Z</span><span class="rld-val" id="rld-rz">—</span>
         </div>
-        <div class="rld-bar-wrap">
-          <div class="rld-bar-label">rot</div>
-          <div class="rld-bar-track rld-bar-center">
-            <div class="rld-bar-fill rld-bar-angular" id="rld-bar-ang"></div>
+        <div class="rld-nav-grid">
+          <span class="rld-key">GOAL</span>
+          <span class="rld-key">X</span><span class="rld-val" id="rld-gx">—</span>
+          <span class="rld-key">Z</span><span class="rld-val" id="rld-gz">—</span>
+        </div>
+        <div class="rld-dist-row">
+          <span class="rld-key">DISTANCE</span>
+          <span class="rld-val rld-val-dist" id="rld-dist">—</span>
+        </div>
+        <div class="rld-divider"></div>
+        <div class="rld-set-goal-row">
+          <span class="rld-set-goal-label">SET GOAL</span>
+          <input class="rld-coord-input" id="rld-goal-x" type="number" step="0.1" min="-2.8" max="2.8" placeholder="x" />
+          <input class="rld-coord-input" id="rld-goal-z" type="number" step="0.1" min="-2.8" max="2.8" placeholder="z" />
+          <button class="rld-btn rld-btn-sm" id="rld-set-goal">→</button>
+        </div>
+      </div>
+
+      <div class="rld-section">
+        <div class="rld-section-title">LAST ACTION</div>
+        <div class="rld-kv-row">
+          <span class="rld-key">LIN</span><span class="rld-val" id="rld-lin">0.00</span>
+          <span class="rld-key">ROT</span><span class="rld-val" id="rld-ang">0.00</span>
+          <span class="rld-key">ARM</span><span class="rld-val" id="rld-arm">0.00</span>
+          <span class="rld-key">JMP</span><span class="rld-val" id="rld-jmp">0.00</span>
+        </div>
+        <div class="rld-action-bars">
+          <div class="rld-bar-wrap">
+            <div class="rld-bar-label">fwd</div>
+            <div class="rld-bar-track"><div class="rld-bar-fill rld-bar-linear" id="rld-bar-lin"></div></div>
+          </div>
+          <div class="rld-bar-wrap">
+            <div class="rld-bar-label">rot</div>
+            <div class="rld-bar-track rld-bar-center">
+              <div class="rld-bar-fill rld-bar-angular" id="rld-bar-ang"></div>
+            </div>
+          </div>
+          <div class="rld-bar-wrap">
+            <div class="rld-bar-label">arm</div>
+            <div class="rld-bar-track rld-bar-center">
+              <div class="rld-bar-fill" id="rld-bar-arm" style="background:#c084fc"></div>
+            </div>
+          </div>
+          <div class="rld-bar-wrap">
+            <div class="rld-bar-label">jmp</div>
+            <div class="rld-bar-track"><div class="rld-bar-fill" id="rld-bar-jmp" style="background:#fb923c"></div></div>
           </div>
         </div>
-        <div class="rld-bar-wrap">
-          <div class="rld-bar-label">arm</div>
-          <div class="rld-bar-track rld-bar-center">
-            <div class="rld-bar-fill" id="rld-bar-arm" style="background:#c084fc"></div>
-          </div>
+      </div>
+
+      <div class="rld-section">
+        <div class="rld-section-title">LIDAR · 11 rays · 165°</div>
+        <canvas id="rld-lidar-canvas" width="220" height="80"></canvas>
+      </div>
+
+      <div class="rld-section">
+        <div class="rld-section-title">EPISODE</div>
+        <div class="rld-kv-row">
+          <span class="rld-key">EP #</span><span class="rld-val" id="rld-ep">0</span>
+          <span class="rld-key">STEP</span><span class="rld-val" id="rld-step">0</span>
+          <span class="rld-key">REWARD</span><span class="rld-val" id="rld-reward">—</span>
+        </div>
+        <div class="rld-step-bar-wrap">
+          <div class="rld-step-bar-track"><div class="rld-step-bar-fill" id="rld-step-fill"></div></div>
         </div>
       </div>
-    </div>
 
-    <div class="rld-section">
-      <div class="rld-section-title">LIDAR (11 rays · 165° FOV)</div>
-      <canvas id="rld-lidar-canvas" width="220" height="80"></canvas>
-    </div>
+      <div class="rld-section">
+        <div class="rld-section-title">EPISODE OUTCOMES</div>
+        <div class="rld-kv-row">
+          <span class="rld-key">☠ DEATHS</span><span class="rld-val" id="rld-deaths" style="color:#f87171">0</span>
+          <span class="rld-key">✓ WINS</span><span class="rld-val" id="rld-succ" style="color:#4ade80">0</span>
+          <span class="rld-key">RATE</span><span class="rld-val" id="rld-rate">—</span>
+        </div>
+        <div class="rld-win-bar-wrap">
+          <div class="rld-win-bar-track"><div class="rld-win-bar-fill" id="rld-win-fill"></div></div>
+        </div>
+        <div class="rld-kv-row" style="margin-top:4px">
+          <span class="rld-key">EP REWARD</span><span class="rld-val" id="rld-ep-reward">0.00</span>
+          <span class="rld-key">TOTAL STEPS</span><span class="rld-val" id="rld-total">0</span>
+        </div>
+        <canvas id="rld-history-canvas" width="220" height="28"></canvas>
+        <div class="rld-history-legend">
+          <span style="color:#4ade80">■</span> win
+          <span style="color:#f87171; margin-left:8px">■</span> death
+          <span style="color:#64748b; margin-left:8px">■</span> timeout
+        </div>
+      </div>
 
-    <div class="rld-section">
-      <div class="rld-section-title">EPISODE</div>
-      <div class="rld-kv-row">
-        <span class="rld-key">EP #</span><span class="rld-val" id="rld-ep">0</span>
-        <span class="rld-key" style="margin-left:8px">STEP</span><span class="rld-val" id="rld-step">0</span>
-        <span class="rld-key" style="margin-left:8px">REWARD</span><span class="rld-val" id="rld-reward">—</span>
+      <div class="rld-section">
+        <div class="rld-section-title">SETTINGS</div>
+        <div class="rld-param-row">
+          <label class="rld-param-label">Max Steps</label>
+          <input class="rld-param-input" id="rld-param-maxsteps" type="number" value="500" min="50" max="5000" step="50" />
+        </div>
+        <div class="rld-param-row">
+          <label class="rld-param-label">Death Dist</label>
+          <input class="rld-param-input" id="rld-param-deathdist" type="number" value="0.28" min="0.1" max="1.0" step="0.02" />
+        </div>
+        <button class="rld-btn rld-btn-apply" id="rld-apply-params">Apply Settings</button>
       </div>
-      <div class="rld-step-bar-wrap">
-        <div class="rld-step-bar-track"><div class="rld-step-bar-fill" id="rld-step-fill"></div></div>
-      </div>
-    </div>
 
-    <div class="rld-section">
-      <div class="rld-section-title">SIMULATION OF DEATH</div>
-      <div class="rld-kv-row">
-        <span class="rld-key">☠ DEATHS</span><span class="rld-val" id="rld-deaths" style="color:#f87171">0</span>
-        <span class="rld-key" style="margin-left:8px">✓ WIN</span><span class="rld-val" id="rld-succ" style="color:#4ade80">0</span>
-        <span class="rld-key" style="margin-left:8px">RATE</span><span class="rld-val" id="rld-rate">—</span>
+      <div class="rld-section rld-controls">
+        <div class="rld-btn-row">
+          <button class="rld-btn" id="rld-btn-reset">⟳ Reset</button>
+          <button class="rld-btn rld-btn-train" id="rld-btn-train">▶ Train</button>
+        </div>
       </div>
-      <div class="rld-kv-row" style="margin-top:4px">
-        <span class="rld-key">EP REWARD</span><span class="rld-val" id="rld-ep-reward">0.000</span>
-        <span class="rld-key" style="margin-left:8px">TOTAL STEPS</span><span class="rld-val" id="rld-total">0</span>
-      </div>
-    </div>
 
-    <div class="rld-section">
-      <div class="rld-section-title">SIMULATION OF DEATH</div>
-      <div class="rld-kv-row">
-        <span class="rld-key">☠ DEATHS</span><span class="rld-val" id="rld-deaths" style="color:#f87171">0</span>
-        <span class="rld-key" style="margin-left:8px">✓ WINS</span><span class="rld-val" id="rld-succ" style="color:#4ade80">0</span>
-        <span class="rld-key" style="margin-left:8px">RATE</span><span class="rld-val" id="rld-rate">—</span>
-      </div>
-      <div class="rld-win-bar-wrap">
-        <div class="rld-win-bar-track"><div class="rld-win-bar-fill" id="rld-win-fill"></div></div>
-      </div>
-      <div class="rld-kv-row" style="margin-top:4px">
-        <span class="rld-key">EP REWARD</span><span class="rld-val" id="rld-ep-reward">0.00</span>
-        <span class="rld-key" style="margin-left:8px">TOTAL</span><span class="rld-val" id="rld-total">0</span>
-      </div>
-      <div class="rld-section-title" style="margin-top:8px">EPISODE HISTORY</div>
-      <canvas id="rld-history-canvas" width="220" height="28" title="Last 10 episodes: green=win, red=death, grey=timeout"></canvas>
-    </div>
-
-    <div class="rld-section">
-      <div class="rld-section-title">ENV PARAMS</div>
-      <div class="rld-param-row">
-        <label class="rld-param-label">Max Steps</label>
-        <input class="rld-param-input" id="rld-param-maxsteps" type="number" value="500" min="50" max="5000" step="50" />
-        <button class="rld-btn rld-btn-sm" id="rld-apply-params">Apply</button>
-      </div>
-      <div class="rld-param-row" style="margin-top:4px">
-        <label class="rld-param-label">Death Dist</label>
-        <input class="rld-param-input" id="rld-param-deathdist" type="number" value="0.28" min="0.1" max="1.0" step="0.02" />
-        <button class="rld-btn rld-btn-sm" id="rld-apply-deathdist">Apply</button>
-      </div>
-    </div>
-
-    <div class="rld-section rld-controls">
-      <div class="rld-section-title">QUICK CONTROLS</div>
-      <div class="rld-btn-row">
-        <button class="rld-btn" id="rld-btn-reset">⟳ Reset</button>
-        <button class="rld-btn" id="rld-btn-train" style="background:rgba(74,222,128,0.15);border-color:rgba(74,222,128,0.4)">▶ Train</button>
-        <button class="rld-btn" id="rld-btn-mode-ai">→ AI</button>
-      </div>
     </div>
   `
 
-  // Load saved params or use defaults
+  // ── Mode tabs ──────────────────────────────────────────────────────────────
+  const _setMode = (mode) => {
+    state.controlMode = mode
+    _updateModeTabs()
+    const labels = { ai: '🧠 AI mode', debug: '🛠 Debug mode', rl: '🤖 RL mode' }
+    setStatus(labels[mode] || mode)
+  }
+
+  const _updateModeTabs = () => {
+    const modes = ['ai', 'debug', 'rl']
+    modes.forEach(m => {
+      const tab = document.getElementById(`rld-tab-${m}`)
+      if (tab) tab.classList.toggle('rld-tab-active', state.controlMode === m)
+    })
+  }
+
+  document.getElementById('rld-tab-ai').addEventListener('click',    () => _setMode('ai'))
+  document.getElementById('rld-tab-debug').addEventListener('click', () => _setMode('debug'))
+  document.getElementById('rld-tab-rl').addEventListener('click',    () => _setMode('rl'))
+
+  _updateModeTabs()
+
+  // ── Load saved params or use defaults ─────────────────────────────────────
   const _savedParams = JSON.parse(localStorage.getItem('rld-params') || '{}')
   let _trainMode = _savedParams.train_mode !== false // default true
 
-  // Sync inputs on boot
   if (_savedParams.max_steps)  document.getElementById('rld-param-maxsteps').value = _savedParams.max_steps
   if (_savedParams.death_dist) document.getElementById('rld-param-deathdist').value = _savedParams.death_dist
 
-  const _saveAndSend = (key, val) => {
-    _savedParams[key] = val
+  const _saveAndSend = (updates) => {
+    Object.assign(_savedParams, updates)
     localStorage.setItem('rld-params', JSON.stringify(_savedParams))
-    setRLParams({ [key]: val })
+    setRLParams(updates)
   }
 
   // Send initial params once connected
@@ -262,7 +288,7 @@ function _buildRLDashboard() {
     }
   }, 500)
 
-  // Wire up controls
+  // ── Wire up controls ───────────────────────────────────────────────────────
   document.getElementById('rld-set-goal').addEventListener('click', () => {
     const x = parseFloat(document.getElementById('rld-goal-x').value)
     const z = parseFloat(document.getElementById('rld-goal-z').value)
@@ -272,19 +298,16 @@ function _buildRLDashboard() {
     }
   })
 
+  // Single "Apply Settings" button for all params
   document.getElementById('rld-apply-params').addEventListener('click', () => {
     const ms = parseInt(document.getElementById('rld-param-maxsteps').value)
-    if (!isNaN(ms) && ms > 0) {
-      _saveAndSend('max_steps', ms)
-      setStatus(`⚙ Max steps → ${ms}`)
-    }
-  })
-
-  document.getElementById('rld-apply-deathdist').addEventListener('click', () => {
     const dd = parseFloat(document.getElementById('rld-param-deathdist').value)
-    if (!isNaN(dd) && dd > 0) {
-      _saveAndSend('death_dist', dd)
-      setStatus(`☠ Death dist → ${dd.toFixed(2)} m`)
+    const updates = {}
+    if (!isNaN(ms) && ms > 0)  updates.max_steps  = ms
+    if (!isNaN(dd) && dd > 0)  updates.death_dist = dd
+    if (Object.keys(updates).length) {
+      _saveAndSend(updates)
+      setStatus(`⚙ Settings applied`)
     }
   })
 
@@ -292,13 +315,14 @@ function _buildRLDashboard() {
     const btn = document.getElementById('rld-btn-train')
     if (!btn) return
     btn.textContent = _trainMode ? '▶ Train' : '⏸ Manual'
-    btn.style.background = _trainMode ? 'rgba(74,222,128,0.15)' : 'rgba(251,191,36,0.15)'
+    btn.style.background     = _trainMode ? 'rgba(74,222,128,0.15)'  : 'rgba(251,191,36,0.15)'
+    btn.style.borderColor    = _trainMode ? 'rgba(74,222,128,0.4)'   : 'rgba(251,191,36,0.4)'
   }
-  _updateTrainBtn() // init
+  _updateTrainBtn()
 
   document.getElementById('rld-btn-train').addEventListener('click', () => {
     _trainMode = !_trainMode
-    _saveAndSend('train_mode', _trainMode)
+    _saveAndSend({ train_mode: _trainMode })
     _updateTrainBtn()
     setStatus(_trainMode ? '▶ Train mode ON — episodes auto-chain' : '⏸ Manual mode — prompt-gated')
   })
@@ -307,55 +331,69 @@ function _buildRLDashboard() {
     setRLParams({ reset: true })
     setStatus('↺ Reset signal sent')
   })
-
-  document.getElementById('rld-btn-mode-ai').addEventListener('click', () => {
-    state.controlMode = 'ai'
-    setStatus('🧠 Switched to AI mode')
-  })
 }
 
 let _lastLidar = Array(11).fill(5.0)
 
 function _tickRLDashboard() {
-  const t = getRLTelemetry()
+  const t         = getRLTelemetry()
   const connected = isRLConnected()
 
-  // Connection badge
+  // ── Show/hide body based on active mode ───────────────────────────────────
+  const body = document.getElementById('rld-body')
+  if (body) body.style.display = state.controlMode === 'rl' ? 'flex' : 'none'
+
+  // ── Keep mode tabs in sync with state ─────────────────────────────────────
+  ;['ai', 'debug', 'rl'].forEach(m => {
+    const tab = document.getElementById(`rld-tab-${m}`)
+    if (tab) tab.classList.toggle('rld-tab-active', state.controlMode === m)
+  })
+
+  // ── Connection badge ───────────────────────────────────────────────────────
   const badge = document.getElementById('rld-conn-badge')
   if (badge) {
-    badge.textContent  = connected ? 'ONLINE' : 'OFFLINE'
-    badge.className    = 'rld-conn-badge ' + (connected ? 'rld-conn-online' : '')
+    badge.textContent = connected ? 'ONLINE' : 'OFFLINE'
+    badge.className   = 'rld-conn-badge ' + (connected ? 'rld-conn-online' : '')
   }
 
-  // Mode
+  if (state.controlMode !== 'rl') return  // nothing else to update
+
+  // ── Agent mode ─────────────────────────────────────────────────────────────
   const modeEl = document.getElementById('rld-mode')
   if (modeEl) {
     modeEl.textContent = t.mode
     modeEl.style.color = t.mode === 'EXECUTING' ? '#4ade80' : '#888'
   }
 
-  // Robot pos
-  _setText('rld-rx', t.robotPos.x?.toFixed(3) ?? '—')
-  _setText('rld-rz', t.robotPos.z?.toFixed(3) ?? '—')
-
-  // Goal
-  _setText('rld-gx', t.goal.x !== null ? t.goal.x.toFixed(3) : '—')
-  _setText('rld-gz', t.goal.z !== null ? t.goal.z.toFixed(3) : '—')
+  // ── Navigation ─────────────────────────────────────────────────────────────
+  _setText('rld-rx',   t.robotPos.x?.toFixed(3) ?? '—')
+  _setText('rld-rz',   t.robotPos.z?.toFixed(3) ?? '—')
+  _setText('rld-gx',   t.goal.x !== null ? t.goal.x.toFixed(3) : '—')
+  _setText('rld-gz',   t.goal.z !== null ? t.goal.z.toFixed(3) : '—')
   _setText('rld-dist', t.distToGoal !== null ? t.distToGoal.toFixed(2) + ' m' : '—')
 
-  // Last action — 4-dim
-  const lin = t.lastAction.linear ?? 0
+  // Colour-code distance
+  const distEl = document.getElementById('rld-dist')
+  if (distEl && t.distToGoal !== null) {
+    distEl.style.color = t.distToGoal < 0.5 ? '#4ade80' : t.distToGoal < 1.5 ? '#f59e0b' : '#e2e8f0'
+  }
+
+  // ── Last action ────────────────────────────────────────────────────────────
+  const lin = t.lastAction.linear  ?? 0
   const ang = t.lastAction.angular ?? 0
-  const arm = t.lastAction.armRot ?? 0
-  const jmp = t.lastAction.jump ?? 0
+  const arm = t.lastAction.armRot  ?? 0
+  const jmp = t.lastAction.jump    ?? 0
+
   _setText('rld-lin', lin.toFixed(2))
   _setText('rld-ang', ang.toFixed(2))
   _setText('rld-arm', arm.toFixed(2))
-  _setText('rld-jmp', jmp > 0.5 ? '↑' : '—')
+  _setText('rld-jmp', jmp.toFixed(2))
 
+  // Forward bar (0–2.5 range, left-anchored)
   const barLin = document.getElementById('rld-bar-lin')
   if (barLin) barLin.style.width = (Math.abs(lin) / 2.5 * 100).toFixed(1) + '%'
 
+  // Rotation bar (center-anchored, -2 to +2)
   const barAng = document.getElementById('rld-bar-ang')
   if (barAng) {
     const pct = (ang / 2.0 + 1) / 2
@@ -364,6 +402,7 @@ function _tickRLDashboard() {
     barAng.style.background = ang >= 0 ? '#f59e0b' : '#818cf8'
   }
 
+  // Arm bar (center-anchored, -π to +π)
   const barArm = document.getElementById('rld-bar-arm')
   if (barArm) {
     const pct = (arm / Math.PI + 1) / 2
@@ -371,10 +410,13 @@ function _tickRLDashboard() {
     barArm.style.width = Math.abs(pct - 0.5) * 100 + '%'
   }
 
-  // Episode stats
-  _setText('rld-ep',    t.episode)
-  _setText('rld-step',  t.stepCount)
-  _setText('rld-total', t.totalSteps)
+  // Jump bar (0–1, left-anchored, orange)
+  const barJmp = document.getElementById('rld-bar-jmp')
+  if (barJmp) barJmp.style.width = (jmp * 100).toFixed(1) + '%'
+
+  // ── Episode ────────────────────────────────────────────────────────────────
+  _setText('rld-ep',   t.episode)
+  _setText('rld-step', t.stepCount)
 
   const rewardEl = document.getElementById('rld-reward')
   if (rewardEl) {
@@ -383,11 +425,18 @@ function _tickRLDashboard() {
     rewardEl.style.color = r > 0 ? '#4ade80' : r < 0 ? '#f87171' : '#888'
   }
 
-  // Simulation of Death stats
+  // Step progress bar
+  const fill = document.getElementById('rld-step-fill')
+  if (fill) {
+    const pct = Math.min(t.stepCount / t.maxSteps, 1) * 100
+    fill.style.width      = pct.toFixed(1) + '%'
+    fill.style.background = pct > 80 ? '#f87171' : pct > 50 ? '#f59e0b' : '#4ade80'
+  }
+
+  // ── Episode outcomes ───────────────────────────────────────────────────────
   _setText('rld-deaths', t.deaths)
   _setText('rld-succ',   t.successes)
 
-  // Use win_rate from Python (computed over last 20 episodes)
   const winRate = t.winRate ?? 0
   const rateEl  = document.getElementById('rld-rate')
   if (rateEl) {
@@ -400,7 +449,6 @@ function _tickRLDashboard() {
     }
   }
 
-  // Win-rate progress bar
   const winFill = document.getElementById('rld-win-fill')
   if (winFill) {
     winFill.style.width      = (winRate * 100).toFixed(1) + '%'
@@ -416,21 +464,11 @@ function _tickRLDashboard() {
 
   _setText('rld-total', t.totalSteps)
 
-  // Step progress bar
-  const fill = document.getElementById('rld-step-fill')
-  if (fill) {
-    const pct = Math.min(t.stepCount / t.maxSteps, 1) * 100
-    fill.style.width      = pct.toFixed(1) + '%'
-    fill.style.background = pct > 80 ? '#f87171' : pct > 50 ? '#f59e0b' : '#4ade80'
-  }
-
-  // Lidar radar
+  // ── Canvas renders ─────────────────────────────────────────────────────────
   _drawLidar(t.lastLidar)
-
-  // Episode history sparkline
   _drawHistory(t.history || [])
 
-  // Sync params inputs
+  // ── Sync settings inputs (don't clobber active edits) ─────────────────────
   const msEl = document.getElementById('rld-param-maxsteps')
   if (msEl && document.activeElement !== msEl) msEl.value = t.maxSteps
 }
@@ -455,12 +493,11 @@ function _drawLidar(readings) {
   const R        = H - 12
   const halfFov  = FOV / 2
 
-  // Background arc
-  ctx.beginPath()
-  ctx.strokeStyle = 'rgba(255,255,255,0.06)'
-  ctx.lineWidth   = 1
+  // Background arcs
+  ctx.lineWidth = 1
   for (let r = 0.25; r <= 1; r += 0.25) {
     ctx.beginPath()
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)'
     ctx.arc(cx, cy, R * r, Math.PI + halfFov, -halfFov, false)
     ctx.stroke()
   }
@@ -504,8 +541,7 @@ function _drawLidar(readings) {
     const py    = cy + Math.sin(angle) * R * frac
     ctx.beginPath()
     ctx.arc(px, py, 2, 0, Math.PI * 2)
-    const danger = d < 0.5 ? '#f87171' : d < 1.5 ? '#fbbf24' : '#38bdf8'
-    ctx.fillStyle = danger
+    ctx.fillStyle = d < 0.5 ? '#f87171' : d < 1.5 ? '#fbbf24' : '#38bdf8'
     ctx.fill()
   }
 
@@ -530,27 +566,25 @@ function _drawHistory(history) {
     return
   }
 
-  const n    = history.length
-  const bw   = Math.floor(W / 10) - 2  // bar width
-  const gap  = 2
+  const bw  = Math.floor(W / 10) - 2
+  const gap = 2
 
   history.forEach((outcome, i) => {
-    const x = i * (bw + gap) + 1
+    const x     = i * (bw + gap) + 1
     const color = outcome === 'success' ? '#4ade80'
                 : outcome === 'death'   ? '#f87171'
-                : '#64748b'  // timeout = grey
-    const h = outcome === 'success' ? H - 4 : outcome === 'death' ? H - 4 : Math.floor(H * 0.5)
+                : '#64748b'
+    const h = outcome === 'timeout' ? Math.floor(H * 0.5) : H - 4
     const y = H - h
 
-    ctx.fillStyle = color + '55'  // dim fill
+    ctx.fillStyle = color + '55'
     ctx.fillRect(x, y, bw, h)
-
     ctx.fillStyle = color
     ctx.fillRect(x, y, bw, 3)  // bright top edge
   })
 
-  // Legend
+  // Episode count
   ctx.font = '7px monospace'
   ctx.fillStyle = 'rgba(255,255,255,0.3)'
-  ctx.fillText(`${n}/10`, W - 22, 8)
+  ctx.fillText(`${history.length}/10`, W - 22, 8)
 }

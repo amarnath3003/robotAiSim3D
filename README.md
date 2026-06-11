@@ -1,132 +1,281 @@
-# 🤖 robotAiSim3D — CausalBot
+# CausalBot
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Vite](https://img.shields.io/badge/vite-%23646CFF.svg?style=flat&logo=vite&logoColor=white)](https://vitejs.dev/)
-[![Three.js](https://img.shields.io/badge/three.js-%23000000.svg?style=flat&logo=three.js&logoColor=white)](https://threejs.org/)
-
-An advanced, LLM-orchestrated 3D robotic simulation framework designed to explore autonomous reasoning, dynamic skill acquisition, and physics-based task execution in real-time.
-
-## 🌌 Vision
-
-To bridge the semantic gap between high-level human intent and low-level robotic control by leveraging the generative and reasoning capabilities of Large Language Models within a physically grounded 3D world.
-
-**CausalBot** is more than just a 3D simulation; it is a "living" research environment where a robotic agent uses Large Language Models (LLMs) to bridge the gap between high-level natural language instructions and low-level physical actions. 
-
-The core philosophy revolves around **Autonomous Reasoning (Chain of Thought)** and **Dynamic Skill Invention**. Instead of being hardcoded with Every possible action, the robot "thinks" through problems, plans its steps, and can even write its own JavaScript code to perform new tasks it hasn't seen before.
-
-## 🎬 Demo
-
-*(Screenshots and GIFs coming soon!)*
-
-## 🧠 Key Features
-
-- **Chain of Thought (CoT):** The robot mimics human reasoning by breaking down complex instructions into intermediate logical steps, visible in real-time within the UI. This allows for transparent debugging of the agent's thought process.
-- **Dynamic Skill Invention:** When faced with a task beyond its current capability, the robot uses an LLM (Gemini) to generate and "invent" new JavaScript skills. These scripts are dynamically loaded, executed in the physics environment, and saved to a persistent **Skill Registry**.
-- **Physics-Driven Execution:** Built with **Rapier3D**, the simulation ensures that every movement, collision, and object interaction follows realistic physical laws, providing high-fidelity feedback to the AI.
-- **Memory & Feedback Loop:** Every action, success, and failure is logged in a **Memory Log**. The agent reflects on these logs to optimize its future planning and skill selection.
-- **Premium 3D Visuals:** A sleek, dark-themed dashboard using **Three.js** with real-time status monitoring, dynamic lighting, and a responsive glassmorphic UI.
+**A universal embodied AI framework: any robot + a capability manifest + an LLM brain = autonomous execution of arbitrary instructions in physics simulation, transferable to real hardware.**
 
 ---
 
-## 🏗️ Architecture
+## Research Thesis
 
-```mermaid
-graph TD
-    User([User Instruction]) --> LLM[Gemini AI - Brain]
-    LLM --> CoT[Chain of Thought Planning]
-    CoT --> SkillRegistry{Skill Registry}
-    SkillRegistry -- Found --> Exec[Execute Skill]
-    SkillRegistry -- Missing --> CodeGen[Generate New JavaScript Skill]
-    CodeGen --> Exec
-    Exec --> Physics[Rapier3D Physics Engine]
-    Physics --> Feedback[Memory & State Update]
-    Feedback --> LLM
+> Given (1) an arbitrary robot morphology described by a simple manifest, (2) a physics simulator grounding actions in reality, and (3) an LLM brain for reasoning — the system can autonomously discover feasible behaviors, synthesize motor skills, and execute open-ended natural language instructions **without robot-specific programming**.
+
+The same policies, skills, and perception strategies trained in simulation transfer directly to physical robots via the manifest abstraction.
+
+---
+
+## The Problem
+
+Every robot today requires bespoke programming. Change the morphology (add a leg, swap a gripper) and you rewrite the control stack. LLMs can reason about tasks but have no physical grounding. RL can learn control but has no semantic understanding.
+
+**CausalBot unifies all three:**
+
+```
+Human Instruction
+       │
+       ▼
+┌─────────────────────────────────────────────────────┐
+│              LLM BRAIN (Planner)                     │
+│  Reads: Robot Manifest + Perception State           │
+│  Outputs: Feasibility check → Sub-task plan         │
+│           → Skill selection or synthesis            │
+└──────────────────────┬──────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────┐
+│              SKILL LAYER                             │
+│  ┌──────────┐  ┌──────────┐  ┌────────────────┐   │
+│  │ Built-in │  │ RL-      │  │ LLM-Invented   │   │
+│  │ Primitives│  │ Trained  │  │ (physics-      │   │
+│  │          │  │ Policies │  │  verified code) │   │
+│  └──────────┘  └──────────┘  └────────────────┘   │
+└──────────────────────┬──────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────┐
+│         MOTOR CONTROLLER                             │
+│  Manifest-constrained joint commands                 │
+│  IK solver • Locomotion • Force control             │
+└──────────────────────┬──────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────┐
+│         PHYSICS (Rapier3D) ←→ PERCEPTION            │
+│  Executes • Detects • Observes • Feeds back         │
+└─────────────────────────────────────────────────────┘
 ```
 
-The project currently focuses on indoor navigation and basic object manipulation within a bounded 3D space:
-- **Environment:** A 3x3 bounded room with floor physics and various interactable objects (balls, boxes, etc.).
-- **Intelligence:** Integration with Gemini API for planning and code generation.
-- **Control:** High-level navigation (A* / Pathfinding) and low-level physical control (Arm manipulation, rotation, jumping).
+---
 
-## 🎯 Expected Outcome
+## Key Idea: The Robot Manifest
 
-The ultimate goal of **robotAiSim3D** is to create a fully autonomous agent capable of:
-1. **Self-Correction:** Understanding why a task failed through physics feedback and re-planning.
-2. **Knowledge Persistence:** Building an extensive library of "invented" skills that grow more complex over time.
-3. **Natural Interaction:** Serving as a bridge for humans to interact with complex robotic systems using simple, conversational language.
+The manifest is the central abstraction that makes everything robot-agnostic:
 
-## 🗺️ Roadmap
+```json
+{
+  "name": "DefaultBot",
+  "model": "./models/robot1.glb",
+  "morphology": "bipedal-wheeled",
+  "joints": [
+    { "name": "arm_left", "type": "revolute", "axis": "x", "limits": [-90, 180] },
+    { "name": "arm_right", "type": "revolute", "axis": "x", "limits": [-90, 180] }
+  ],
+  "capabilities": [
+    "locomotion:ground",
+    "manipulation:single-gripper",
+    "jump:low"
+  ],
+  "constraints": {
+    "maxSpeed": 2.5,
+    "maxReach": 0.6,
+    "canFly": false,
+    "canSwim": false
+  },
+  "sensors": ["lidar_360", "front_camera"],
+  "mass": 8.0
+}
+```
 
-- [ ] **Multi-Agent Collaboration:** Allowing multiple CausalBots to communicate and solve tasks together.
-- [ ] **Object Permanence:** Implementing a long-term memory system for object locations.
-- [ ] **Complex Grippers:** Transitioning from simple physics impulses to more complex, multi-jointed robotic arms.
-- [ ] **Voice Interface:** Direct natural language interaction via Web Speech API.
+The LLM reads this manifest. When you say "do a backflip", it checks constraints, plans the joint sequence, synthesizes the skill, and verifies it in physics. If the robot can't physically do it — it tells you why and suggests alternatives.
 
-- **Frontend:** [Vite](https://vitejs.dev/) + Vanilla JavaScript
-- **3D Engine:** [Three.js](https://threejs.org/) for high-performance WebGL rendering.
-- **Physics Engine:** [Rapier3D](https://rapier.rs/) (Rust-based WASM physics) for deterministic rigid-body dynamics.
-- **AI Integration:** [Google Gemini API](https://ai.google.dev/) (utilizing `gemini-2.5-flash` models).
-- **Styling:** Custom CSS with Glassmorphism, CSS Variables, and CSS Grid/Flexbox for a premium dashboard feel.
-- **State Management:** Reactive state patterns for real-time synchronization between the AI brain and the 3D scene.
+**Swap the manifest + model = entirely different robot, same brain.**
 
-## ⚙️ Getting Started
+---
+
+## Sim-to-Real Pipeline
+
+This is not just a toy. The architecture is designed for real-world transfer:
+
+| Layer | Sim (Three.js + Rapier3D) | Real (Target) |
+|-------|---------------------------|---------------|
+| Manifest | JSON config | Same JSON → URDF/ROS params |
+| Perception | Raycasting + virtual camera | LiDAR + RGB camera |
+| Motor commands | Joint velocities → Rapier | Joint velocities → ROS/actuators |
+| RL policies | Train in sim | Deploy via sim2real transfer |
+| Skills | Verified in physics sim | Same code, real actuators |
+| Observations | Normalized sensor vector | Same dimensionality from real sensors |
+
+The manifest schema maps directly to URDF joint descriptions. Observation spaces match real sensor outputs. Trained policies export to ONNX for edge deployment.
+
+---
+
+## What Makes This Novel
+
+1. **Universal Robot Adapter** — Load any robot model. Describe its joints in plain JSON. The system adapts automatically.
+
+2. **LLM + RL Cooperation** — The LLM doesn't guess motor commands. It orchestrates RL-trained skills and invents new ones when needed, always checking feasibility against the manifest.
+
+3. **Embodied Perception by Default** — The robot is always "blind". It must physically observe its environment through sensors, maintaining a confidence-decaying spatial memory. No omniscience.
+
+4. **Physics-Verified Skill Synthesis** — When the LLM invents a new skill (e.g., "cartwheel"), it runs in the physics sim first. Only skills that succeed without violating constraints get saved.
+
+5. **Sim-to-Real Ready** — Every abstraction (manifest, observation space, action space, reward signals) is designed to map 1:1 to physical hardware.
+
+---
+
+## Current Status
+
+- Three.js + Rapier3D physics simulation (working)
+- LLM-driven planning with Chain-of-Thought (working)
+- Dynamic skill invention and registry (working)
+- Raycasting perception with decaying memory (working)
+- PPO training via WebSocket bridge to Python (working)
+- A* pathfinding with obstacle avoidance (working)
+- Procedural maze environments (working)
+
+**In Progress:** Unifying these components under the manifest-driven architecture.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Simulation | Three.js (rendering) + Rapier3D (physics, WASM) |
+| AI Brain | LLM API (NVIDIA/OpenAI/local — configurable) |
+| RL Training | Python: Stable-Baselines3, Gymnasium, PPO |
+| Communication | WebSocket bridge (Python ↔ Browser) |
+| Build | Vite 5 (ES modules) |
+| Future Real | ROS2, ONNX Runtime, real LiDAR/cameras |
+
+---
+
+## Getting Started
 
 ### Prerequisites
-- Node.js (v18+)
-- A Google Gemini API Key
+- Node.js v18+
+- Python 3.10+ (for RL training)
+- An LLM API key (NVIDIA, OpenAI, or local model)
 
 ### Installation
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/amarnath3003/robotAiSim3D.git
-   ```
-2. Navigate to the `causalbot` directory:
-   ```bash
-   cd causalbot
-   ```
-3. Install dependencies:
-   ```bash
-   npm install
-   ```
-4. Create a `.env` file in the `causalbot` folder and add your API key:
-   ```env
-   VITE_GEMINI_API_KEY=your_api_key_here
-   ```
-   > [!IMPORTANT]
-   > Make sure to get your API key from [Google AI Studio](https://aistudio.google.com/). Without a valid key, the robot will not be able to "think" or generate skills.
+```bash
+git clone https://github.com/amarnath3003/robotAiSim3D.git
+cd robotAiSim3D/causalbot
+npm install
+```
 
-5. Run the development server:
-   ```bash
-   npm run dev
-   ```
+### Configuration
 
-## 🔧 Troubleshooting
+```bash
+cp .env.example .env
+# Edit .env with your LLM API key
+```
 
-- **Black Screen on Load:** Ensure your browser supports WebGL 2.0. Check the console for any Three.js initialization errors.
-- **Robot Not Responding:** Verify your `VITE_GEMINI_API_KEY` is correct and has not reached its rate limit.
-- **Physics Glitches:** If objects pass through walls, try refreshing the page to reset the Rapier3D world state.
+### Run Simulation
 
-Contributions are welcome! If you have ideas for new robot skills, environment improvements, or better LLM prompt strategies:
+```bash
+npm run dev
+```
 
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+### Run RL Training (separate terminal)
 
-## 📜 License
+```bash
+cd python
+pip install -r requirements.txt
+python train_rl.py
+```
 
-Distributed under the MIT License. See `LICENSE` for more information.
+---
 
-## 📧 Contact
+## Project Structure
 
-Amarnath - [@amarnath3003](https://github.com/amarnath3003)
+```
+causalbot/
+├── src/
+│   ├── core/              # Framework core
+│   │   ├── manifest.js    # Robot manifest loader + validator
+│   │   ├── adapter.js     # Universal robot adapter (GLB + constraints)
+│   │   ├── engine.js      # Main simulation loop orchestrator
+│   │   └── state.js       # Global state management
+│   ├── brain/             # LLM integration
+│   │   ├── planner.js     # High-level task decomposition
+│   │   ├── feasibility.js # Constraint checking against manifest
+│   │   ├── synthesizer.js # Skill code generation
+│   │   └── llm.js         # LLM API communication
+│   ├── skills/            # Skill system
+│   │   ├── registry.js    # Skill storage and lookup
+│   │   ├── primitives.js  # Built-in atomic actions
+│   │   ├── learned.js     # RL-trained skill loader
+│   │   └── verifier.js    # Physics verification of invented skills
+│   ├── perception/        # Sensing (blind by default)
+│   │   ├── vision.js      # Raycasting vision sensor
+│   │   ├── proprioception.js  # Joint states, balance, contacts
+│   │   ├── memory.js      # Decaying spatial memory
+│   │   └── observer.js    # Unified observation builder
+│   ├── motor/             # Low-level control
+│   │   ├── controller.js  # Joint velocity/force application
+│   │   └── locomotion.js  # Walking/movement patterns
+│   ├── physics/           # Physics simulation
+│   │   ├── world.js       # Rapier world setup
+│   │   └── environment.js # Scene objects, terrain, walls
+│   ├── rl/                # Reinforcement learning
+│   │   ├── bridge.js      # WebSocket to Python
+│   │   ├── observation.js # Observation space builder
+│   │   └── reward.js      # Reward signal definitions
+│   ├── render/            # Three.js rendering
+│   │   ├── scene.js       # Scene setup, lighting, post-processing
+│   │   └── debug.js       # Debug visualization (paths, rays, colliders)
+│   └── ui/                # Dashboard
+│       ├── dashboard.js   # Status panels
+│       └── controls.js    # Input handling
+├── manifests/             # Robot manifest files
+│   ├── schema.json        # JSON Schema for validation
+│   └── default-bot.json   # Built-in robot manifest
+├── python/                # RL training (Python side)
+│   ├── causalbot_env.py   # Gymnasium environment
+│   ├── train_rl.py        # PPO training script
+│   └── models/            # Saved checkpoints
+├── models/                # Robot 3D models (GLB/GLTF)
+└── main.js                # Entry point
+```
 
-Project Link: [https://github.com/amarnath3003/robotAiSim3D](https://github.com/amarnath3003/robotAiSim3D)
+---
 
-## 🙏 Acknowledgements
+## Roadmap
 
-- [Three.js Community](https://discourse.threejs.org/)
-- [Rapier3D Documentation](https://rapier.rs/docs/)
-- [Google AI Studio](https://aistudio.google.com/)
+### Phase 1: Foundation (Current)
+- [x] Physics simulation with Rapier3D
+- [x] LLM planning with CoT
+- [x] Perception system (blind mode)
+- [x] RL training pipeline
+- [ ] **Robot Manifest schema and loader**
+- [ ] **Universal Robot Adapter**
+- [ ] **Unified control pipeline (replace mode switching)**
+
+### Phase 2: Intelligence
+- [ ] LLM feasibility checking against manifest
+- [ ] Physics-verified skill synthesis
+- [ ] RL trains specific skills invokable by LLM
+- [ ] Proprioception (joint states, balance sensing)
+
+### Phase 3: Generalization
+- [ ] Load multiple different robot models
+- [ ] Same instruction → different execution per morphology
+- [ ] Skill transfer between similar morphologies
+- [ ] Multi-step mission execution with re-planning
+
+### Phase 4: Sim-to-Real
+- [ ] Manifest → URDF export
+- [ ] Policy export to ONNX
+- [ ] ROS2 bridge for real actuators
+- [ ] Real sensor ingestion (camera, LiDAR)
+- [ ] Domain randomization for transfer
+
+---
+
+## License
+
+MIT
+
+## Author
+
+Amarnath — [@amarnath3003](https://github.com/amarnath3003)

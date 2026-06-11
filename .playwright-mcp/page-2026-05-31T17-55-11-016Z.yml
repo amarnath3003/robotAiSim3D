@@ -1,0 +1,101 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e5]:
+      - strong [ref=e6]: Perf
+      - text: "Avg: —"
+      - text: "Frames: 0"
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - heading "Quick Liquid" [level=1] [ref=e9]
+        - paragraph [ref=e10]: Production-quality liquid glass for the web.
+      - generic [ref=e12]: QuickLiquidHomeDocsAPIGitHub
+      - generic [ref=e13]:
+        - generic: Liquid Glass
+      - generic [ref=e14]:
+        - heading "Liquid Animations" [level=2] [ref=e15]
+        - paragraph [ref=e16]: Spring physics, merging blobs, gesture response.
+      - generic [ref=e20]:
+        - button "Home" [ref=e21] [cursor=pointer]
+        - button "Search" [ref=e22] [cursor=pointer]
+        - button "Library" [ref=e23] [cursor=pointer]
+        - button "Profile" [ref=e24] [cursor=pointer]
+      - generic [ref=e25]:
+        - heading "Water Droplet Merge" [level=3] [ref=e26]
+        - paragraph [ref=e27]: Drag the glass blobs close together.
+        - generic [ref=e28]:
+          - generic [ref=e30]: A
+          - generic [ref=e32]: B
+          - generic [ref=e34]: C
+      - generic [ref=e35]:
+        - heading "Liquid Buttons" [level=3] [ref=e36]
+        - paragraph [ref=e37]: Press and hold — spring physics.
+        - generic [ref=e38]:
+          - generic [ref=e40] [cursor=pointer]: Bouncy
+          - generic [ref=e42] [cursor=pointer]: Squishy
+          - generic [ref=e44] [cursor=pointer]: Prismatic
+      - generic [ref=e45]:
+        - generic [ref=e47]:
+          - heading "Liquid Glass" [level=2] [ref=e48]
+          - paragraph [ref=e49]: Pure glass — the scene shows through completely. Defined by a crisp rim, thin specular streak, and subtle edge highlights.
+        - generic [ref=e51]:
+          - heading "Prismatic" [level=2] [ref=e52]
+          - paragraph [ref=e53]: Pure glass — the scene shows through completely. Defined by a crisp rim, thin specular streak, and subtle edge highlights.
+        - generic [ref=e55]:
+          - heading "Frosted" [level=2] [ref=e56]
+          - paragraph [ref=e57]: Pure glass — the scene shows through completely. Defined by a crisp rim, thin specular streak, and subtle edge highlights.
+        - generic [ref=e59]:
+          - heading "Crystal Clear" [level=2] [ref=e60]
+          - paragraph [ref=e61]: Pure glass — the scene shows through completely. Defined by a crisp rim, thin specular streak, and subtle edge highlights.
+      - generic [ref=e63]:
+        - heading "Live Configuration" [level=3] [ref=e64]
+        - generic [ref=e65]:
+          - generic [ref=e66]: Blur
+          - slider [ref=e67]: "4"
+          - generic [ref=e68]: 4px
+        - generic [ref=e69]:
+          - generic [ref=e70]: Saturation
+          - slider [ref=e71]: "1.4"
+          - generic [ref=e72]: "1.40"
+        - generic [ref=e73]:
+          - generic [ref=e74]: Edge Highlight
+          - slider [ref=e75]: "0.8"
+          - generic [ref=e76]: "0.80"
+        - generic [ref=e77]:
+          - generic [ref=e78]: Specular
+          - slider [ref=e79]: "0.9"
+          - generic [ref=e80]: "0.90"
+        - generic [ref=e81]:
+          - generic [ref=e82]: Chromatic Aberr.
+          - slider [ref=e83]: "0.15"
+          - generic [ref=e84]: "0.15"
+        - generic [ref=e85]:
+          - generic [ref=e86]: Border Radius
+          - slider [ref=e87]: "32"
+          - generic [ref=e88]: 32px
+        - generic [ref=e89]:
+          - generic [ref=e90]: Shadow Depth
+          - slider [ref=e91]: "4"
+          - generic [ref=e92]: 4px
+        - generic [ref=e93]:
+          - generic [ref=e94]: Tint Opacity
+          - slider [ref=e95]: "0.08"
+          - generic [ref=e96]: "0.080"
+        - generic [ref=e97]:
+          - generic [ref=e98]: Refraction
+          - slider [ref=e99]: "25"
+          - generic [ref=e100]: "25"
+  - img
+  - img
+  - img
+  - img
+  - img
+  - img
+  - img
+  - img
+  - img
+  - img
+  - img
+  - img
+  - img
+  - img
+  - img

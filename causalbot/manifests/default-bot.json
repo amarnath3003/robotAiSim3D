@@ -1,0 +1,171 @@
+{
+  "name": "CausalBot-Default",
+  "version": "1.0.0",
+  "model": {
+    "path": "./models/robot1.glb",
+    "format": "glb",
+    "scale": 1.0,
+    "originOffset": { "x": 0, "y": 0, "z": 0 }
+  },
+  "morphology": "bipedal-wheeled",
+
+  "physics": {
+    "mass": 8.0,
+    "colliderType": "capsule",
+    "colliderDimensions": {
+      "radius": 0.25,
+      "height": 0.7
+    },
+    "friction": 0.7,
+    "restitution": 0.1,
+    "linearDamping": 0.5,
+    "angularDamping": 0.8
+  },
+
+  "joints": [
+    {
+      "name": "arm_left",
+      "type": "revolute",
+      "axis": "x",
+      "limits": { "lower": -90, "upper": 180, "velocity": 3.0, "effort": 10.0 },
+      "parent": "torso",
+      "child": "hand_left",
+      "restPosition": 0,
+      "group": "left_arm"
+    },
+    {
+      "name": "arm_right",
+      "type": "revolute",
+      "axis": "x",
+      "limits": { "lower": -90, "upper": 180, "velocity": 3.0, "effort": 10.0 },
+      "parent": "torso",
+      "child": "hand_right",
+      "restPosition": 0,
+      "group": "right_arm"
+    },
+    {
+      "name": "head_yaw",
+      "type": "revolute",
+      "axis": "y",
+      "limits": { "lower": -120, "upper": 120, "velocity": 4.0, "effort": 5.0 },
+      "parent": "torso",
+      "child": "head",
+      "restPosition": 0,
+      "group": "head"
+    },
+    {
+      "name": "head_pitch",
+      "type": "revolute",
+      "axis": "x",
+      "limits": { "lower": -30, "upper": 45, "velocity": 3.0, "effort": 5.0 },
+      "parent": "head_yaw_link",
+      "child": "head",
+      "restPosition": 0,
+      "group": "head"
+    }
+  ],
+
+  "capabilities": [
+    {
+      "id": "locomotion:ground",
+      "description": "Can move forward/backward on flat ground at up to 2.5 m/s. Uses wheel-based locomotion.",
+      "parameters": { "maxSpeed": 2.5, "turnRadius": 0.1 }
+    },
+    {
+      "id": "locomotion:jump",
+      "description": "Can perform small vertical jumps up to 0.4m height. Requires stable footing.",
+      "parameters": { "maxHeight": 0.4, "cooldown": 0.5 }
+    },
+    {
+      "id": "manipulation:grasp",
+      "description": "Can grasp objects up to 2kg within 0.6m reach using both arms. Single object at a time per arm.",
+      "parameters": { "maxPayload": 2.0, "maxReach": 0.6 }
+    },
+    {
+      "id": "manipulation:push",
+      "description": "Can push objects up to 5kg by making contact and applying force.",
+      "parameters": { "maxForce": 15.0 }
+    },
+    {
+      "id": "perception:scan",
+      "description": "Can rotate head 240 degrees to scan surroundings. Takes ~2 seconds for full sweep.",
+      "parameters": { "sweepAngle": 240, "sweepTime": 2.0 }
+    },
+    {
+      "id": "locomotion:rotate",
+      "description": "Can rotate in place at up to 4 rad/s.",
+      "parameters": { "maxAngularSpeed": 4.0 }
+    }
+  ],
+
+  "constraints": {
+    "maxSpeed": 2.5,
+    "maxAngularSpeed": 4.0,
+    "maxReach": 0.6,
+    "maxPayload": 2.0,
+    "maxJumpHeight": 0.4,
+    "canFly": false,
+    "canSwim": false,
+    "canClimb": false,
+    "balanceRequired": false,
+    "custom": {
+      "surfaceRequirement": "Requires flat, solid ground for locomotion. Cannot traverse stairs or uneven terrain.",
+      "manipulationNote": "Arms move together for symmetrical actions. Independent arm control is limited.",
+      "fragileHandling": "Should reduce speed when carrying fragile objects (mass < 0.5kg, fragility > 0.5)."
+    }
+  },
+
+  "sensors": [
+    {
+      "id": "lidar_360",
+      "type": "lidar",
+      "position": { "x": 0, "y": 0.5, "z": 0 },
+      "orientation": { "pitch": 0, "yaw": 0, "roll": 0 },
+      "config": {
+        "fov": 360,
+        "range": 5.0,
+        "rays": 11,
+        "updateRate": 60
+      }
+    },
+    {
+      "id": "front_vision",
+      "type": "camera",
+      "position": { "x": 0, "y": 0.55, "z": 0.15 },
+      "orientation": { "pitch": 0, "yaw": 0, "roll": 0 },
+      "config": {
+        "fov": 150,
+        "range": 8.0,
+        "rays": 36,
+        "updateRate": 30
+      }
+    }
+  ],
+
+  "actionSpace": {
+    "type": "continuous",
+    "dimensions": 4,
+    "channels": [
+      { "name": "linear_speed", "low": 0.0, "high": 2.5, "description": "Forward movement speed (m/s)" },
+      { "name": "angular_speed", "low": -2.0, "high": 2.0, "description": "Rotation speed (rad/s, positive=left)" },
+      { "name": "arm_rotation", "low": -3.14159, "high": 3.14159, "description": "Arm angle target (rad)" },
+      { "name": "jump", "low": 0.0, "high": 1.0, "description": "Jump trigger (>0.5 = jump)" }
+    ]
+  },
+
+  "observationSpace": {
+    "dimensions": 13,
+    "channels": [
+      { "name": "target_distance", "size": 1, "low": 0, "high": 10, "source": "computed" },
+      { "name": "target_angle", "size": 1, "low": -3.14159, "high": 3.14159, "source": "computed" },
+      { "name": "lidar", "size": 11, "low": 0, "high": 5.0, "source": "lidar_360" }
+    ]
+  },
+
+  "metadata": {
+    "author": "Amarnath",
+    "description": "Default CausalBot — a compact bipedal-wheeled robot with dual arms, head scanning, and 360-degree LIDAR. Designed for indoor navigation and object manipulation tasks.",
+    "tags": ["indoor", "manipulation", "navigation", "research"],
+    "realWorldEquivalent": "Custom — closest to a Fetch Mobile Manipulator or Unitree Go2 with arm"
+  }
+}
