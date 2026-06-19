@@ -158,11 +158,18 @@ async function _runCV() {
   // ── 2. Render robot's eye view to off-screen target ───────────────────────
   const prevTarget = _renderer.getRenderTarget()
   const prevClear  = _renderer.autoClear
+  
+  // Hide the robot itself so its own body doesn't block the camera!
+  const robotMesh = robot.mesh
+  const wasVisible = robotMesh ? robotMesh.visible : true
+  if (robotMesh) robotMesh.visible = false
+
   _renderer.autoClear = true
   _renderer.setRenderTarget(_renderTarget)
   try {
     _renderer.render(scene, _eyeCamera)
   } finally {
+    if (robotMesh) robotMesh.visible = wasVisible
     _renderer.setRenderTarget(prevTarget)
     _renderer.autoClear = prevClear
   }
