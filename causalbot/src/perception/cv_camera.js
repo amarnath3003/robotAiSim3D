@@ -28,8 +28,10 @@ let _getRobot     = null    // () => RobotInstance
 let _getScene     = null    // () => THREE.Scene
 let _eyeCamera    = null    // THREE.PerspectiveCamera — robot's eye view
 let _renderTarget = null    // THREE.WebGLRenderTarget — off-screen capture
-let _pixelCanvas  = null    // HTMLCanvasElement — for readback → dataURL
+let _pixelCanvas  = null    // HTMLCanvasElement — internal clean buffer (no boxes)
 let _pixelCtx     = null    // CanvasRenderingContext2D
+let _pipCanvas    = null    // HTMLCanvasElement — visible overlay in DOM
+let _pipCtx       = null    // CanvasRenderingContext2D
 
 let _lastCVTime   = 0
 let _active       = false   // true when model is loaded in worker
@@ -38,6 +40,7 @@ let _cvBusy       = false   // prevent concurrent calls
 let _worker       = null    // Web Worker for background inference
 let _pendingTasks = new Map() // Maps message ID to Promise resolve/reject
 let _taskId       = 0
+let _lastBoxes    = []      // Cached bounding boxes for 60fps rendering
 
 // ─── Public API ────────────────────────────────────────────────────────────────
 
@@ -46,47 +49,49 @@ export function initCVCamera(renderer, getRobotFn, getSceneFn) {
   _getRobot = getRobotFn
   _getScene = getSceneFn
 
-  // ── Robot-eye camera ───────────────────────────────────────────────────────
   const manifest   = getManifest()
   const camSensor  = manifest?.sensors?.find(s => s.type === 'camera')
   const eyeFOV     = Math.min(camSensor?.config?.fov || 90, 90)
 
   _eyeCamera = new THREE.PerspectiveCamera(eyeFOV, 1.0, 0.05, 25)
 
-  // ── Off-screen render target ───────────────────────────────────────────────
   _renderTarget = new THREE.WebGLRenderTarget(CAPTURE_SIZE, CAPTURE_SIZE, {
     minFilter: THREE.LinearFilter,
     magFilter: THREE.LinearFilter,
     format: THREE.RGBAFormat,
   })
 
-  // ── Readback canvas (WebGL pixels → 2D context → DataURL) ─────────────────
+  // Clean hidden canvas for inference extraction
   _pixelCanvas        = document.createElement('canvas')
   _pixelCanvas.width  = CAPTURE_SIZE
   _pixelCanvas.height = CAPTURE_SIZE
   _pixelCtx           = _pixelCanvas.getContext('2d', { willReadFrequently: true })
 
-  // Picture-in-Picture Setup
-  _pixelCanvas.id = 'cv-pip'
-  _pixelCanvas.style.position = 'absolute'
-  _pixelCanvas.style.bottom = '20px'
-  _pixelCanvas.style.right = '20px'
-  _pixelCanvas.style.width = '256px'
-  _pixelCanvas.style.height = '256px'
-  _pixelCanvas.style.border = '2px solid rgba(0, 255, 204, 0.5)'
-  _pixelCanvas.style.borderRadius = '8px'
-  _pixelCanvas.style.zIndex = '9999'
-  _pixelCanvas.style.pointerEvents = 'none'
-  _pixelCanvas.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)'
+  // Visible PiP Canvas for the DOM
+  _pipCanvas          = document.createElement('canvas')
+  _pipCanvas.id       = 'cv-pip'
+  _pipCanvas.width    = CAPTURE_SIZE
+  _pipCanvas.height   = CAPTURE_SIZE
+  _pipCtx             = _pipCanvas.getContext('2d')
+  
+  _pipCanvas.style.position = 'absolute'
+  _pipCanvas.style.bottom = '20px'
+  _pipCanvas.style.right = '20px'
+  _pipCanvas.style.width = '256px'
+  _pipCanvas.style.height = '256px'
+  _pipCanvas.style.border = '2px solid rgba(0, 255, 204, 0.5)'
+  _pipCanvas.style.borderRadius = '8px'
+  _pipCanvas.style.zIndex = '9999'
+  _pipCanvas.style.pointerEvents = 'none'
+  _pipCanvas.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)'
   
   const existingPip = document.getElementById('cv-pip')
   if (existingPip) {
-    existingPip.replaceWith(_pixelCanvas)
+    existingPip.replaceWith(_pipCanvas)
   } else {
-    document.body.appendChild(_pixelCanvas)
+    document.body.appendChild(_pipCanvas)
   }
 
-  // Initialize Web Worker
   console.log('[CVCamera] ⏳ Spawning Web Worker for local vision model...')
   _worker = new Worker(new URL('./cv_worker.js', import.meta.url), { type: 'module' })
 
@@ -111,12 +116,18 @@ export function initCVCamera(renderer, getRobotFn, getSceneFn) {
 }
 
 export function cvTick() {
-  if (!_active || _cvBusy || !_worker) return
+  if (!_worker) return
+  
+  // Always update the 60fps live feed for the user
+  _updatePiPFeed()
+
+  if (!_active || _cvBusy) return
   const now = Date.now()
   if (now - _lastCVTime < CV_INTERVAL_MS) return
   _lastCVTime = now
   _cvBusy = true
 
+  // Run the background inference
   _runCV()
     .finally(() => { _cvBusy = false })
     .catch(() => {})
@@ -131,20 +142,16 @@ export function isCVActive() { return _active }
 
 // ─── Core CV Pipeline ──────────────────────────────────────────────────────────
 
-async function _runCV() {
+function _updatePiPFeed() {
   const robot = _getRobot?.()
   const scene = _getScene?.()
-  if (!robot || !scene || !_eyeCamera || !_renderTarget || !_renderer) return []
+  if (!robot || !scene || !_eyeCamera || !_renderTarget || !_renderer) return
 
-  // ── 1. Position eye camera at robot's head ─────────────────────────────────
+  // 1. Position eye camera
   const rp  = robot.position
   const ori = robot.orientation
 
-  // Clone camera orientation for raycasting (in case robot moves during async inference)
-  // Fix: Robot is oriented +Z, but THREE.js cameras look down -Z. Rotate by 180 degrees.
   const capturePos = new THREE.Vector3(rp.x, rp.y + 0.55, rp.z)
-  
-  // Offset camera forward (+Z of the robot's local orientation) so it's outside its own head
   const forwardOffset = new THREE.Vector3(0, 0, 1).applyQuaternion(ori)
   capturePos.add(forwardOffset.multiplyScalar(0.45))
 
@@ -155,11 +162,10 @@ async function _runCV() {
   _eyeCamera.quaternion.copy(captureOri)
   _eyeCamera.updateMatrixWorld()
 
-  // ── 2. Render robot's eye view to off-screen target ───────────────────────
+  // 2. Render robot's eye view
   const prevTarget = _renderer.getRenderTarget()
   const prevClear  = _renderer.autoClear
   
-  // Hide the robot itself so its own body doesn't block the camera!
   const robotMesh = robot.mesh
   const wasVisible = robotMesh ? robotMesh.visible : true
   if (robotMesh) robotMesh.visible = false
@@ -174,11 +180,10 @@ async function _runCV() {
     _renderer.autoClear = prevClear
   }
 
-  // ── 3. Read pixels (GPU → CPU) ─────────────────────────────────────────────
+  // 3. Read pixels
   const pixelBuf = new Uint8Array(CAPTURE_SIZE * CAPTURE_SIZE * 4)
   _renderer.readRenderTargetPixels(_renderTarget, 0, 0, CAPTURE_SIZE, CAPTURE_SIZE, pixelBuf)
 
-  // WebGL renders bottom-up; flip Y for correct canvas orientation
   const imgData = _pixelCtx.createImageData(CAPTURE_SIZE, CAPTURE_SIZE)
   for (let row = 0; row < CAPTURE_SIZE; row++) {
     const srcRow = CAPTURE_SIZE - 1 - row
@@ -187,9 +192,41 @@ async function _runCV() {
       row * CAPTURE_SIZE * 4
     )
   }
+  
+  // 4. Update the hidden clean canvas
   _pixelCtx.putImageData(imgData, 0, 0)
+  
+  // 5. Update the visible PiP canvas
+  _pipCtx.drawImage(_pixelCanvas, 0, 0)
+  
+  // 6. Draw bounding boxes on the PiP canvas
+  for (const det of _lastBoxes) {
+    const { label, score, box, color } = det
+    _pipCtx.strokeStyle = 'lime'
+    _pipCtx.lineWidth = 2
+    _pipCtx.strokeRect(box.xmin, box.ymin, box.xmax - box.xmin, box.ymax - box.ymin)
 
-  // ── 4. Encode to JPEG base64 and Dispatch to Worker ────────────────────────
+    const text = `${color} ${label} (${(score*100).toFixed(0)}%)`
+    _pipCtx.fillStyle = 'rgba(0, 0, 0, 0.7)'
+    const textWidth = _pipCtx.measureText(text).width
+    _pipCtx.fillRect(box.xmin, box.ymin > 14 ? box.ymin - 14 : 0, textWidth + 4, 14)
+    _pipCtx.fillStyle = 'lime'
+    _pipCtx.font = '10px Arial'
+    _pipCtx.fillText(text, box.xmin + 2, box.ymin > 14 ? box.ymin - 4 : 10)
+  }
+}
+
+async function _runCV() {
+  const robot = _getRobot?.()
+  const scene = _getScene?.()
+  if (!robot || !scene || !_eyeCamera) return []
+
+  // Snapshot orientation for raycasting (camera is already positioned by _updatePiPFeed)
+  const capturePos = _eyeCamera.position.clone()
+  const captureOri = _eyeCamera.quaternion.clone()
+
+  // 4. Encode to JPEG base64 and Dispatch to Worker ────────────────────────
+  // The _pixelCanvas holds a CLEAN image (no bounding boxes) updated by _updatePiPFeed
   const dataUrl = _pixelCanvas.toDataURL('image/jpeg', 0.8)
   const currentId = ++_taskId
 
@@ -198,44 +235,33 @@ async function _runCV() {
     _worker.postMessage({ id: currentId, dataUrl })
   })
 
-  // Clear previous overlays (optional, but putImageData overrides it anyway on next tick)
-  if (!output || !output.length) return []
+  if (!output || !output.length) {
+    _lastBoxes = []
+    return []
+  }
 
-  // ── 5. Process Detections (Color Sampling & 3D Mapping) ────────────────────
-  // Restore the camera to its captured state so raycasting aligns perfectly with the image
+  // 5. Process Detections (Color Sampling & 3D Mapping) ────────────────────
   _eyeCamera.position.copy(capturePos)
   _eyeCamera.quaternion.copy(captureOri)
   _eyeCamera.updateMatrixWorld()
 
   const raycaster = new THREE.Raycaster()
   const results = []
+  const newBoxes = []
 
   for (const det of output) {
     const { label, score, box } = det
 
-    // Get center of bounding box in pixel coordinates
     const cx = Math.floor((box.xmin + box.xmax) / 2)
     const cy = Math.floor((box.ymin + box.ymax) / 2)
     
-    // Sample exact RGB pixel color from the 2D context
+    // Sample exact RGB pixel color from the clean 2D context
     const pixel = _pixelCtx.getImageData(cx, cy, 1, 1).data
     const color = _rgbToColorName(pixel[0], pixel[1], pixel[2])
+    
+    // Save to draw array
+    newBoxes.push({ label, score, box, color })
 
-    // Draw bounding box on the PiP canvas
-    _pixelCtx.strokeStyle = 'lime'
-    _pixelCtx.lineWidth = 2
-    _pixelCtx.strokeRect(box.xmin, box.ymin, box.xmax - box.xmin, box.ymax - box.ymin)
-
-    // Draw label background and text
-    const text = `${color} ${label} (${(score*100).toFixed(0)}%)`
-    _pixelCtx.fillStyle = 'rgba(0, 0, 0, 0.7)'
-    const textWidth = _pixelCtx.measureText(text).width
-    _pixelCtx.fillRect(box.xmin, box.ymin > 14 ? box.ymin - 14 : 0, textWidth + 4, 14)
-    _pixelCtx.fillStyle = 'lime'
-    _pixelCtx.font = '10px Arial'
-    _pixelCtx.fillText(text, box.xmin + 2, box.ymin > 14 ? box.ymin - 4 : 10)
-
-    // Convert to NDC (Normalized Device Coordinates) for Raycasting
     const ndcX = (cx / CAPTURE_SIZE) * 2 - 1
     const ndcY = -(cy / CAPTURE_SIZE) * 2 + 1
 
@@ -271,6 +297,8 @@ async function _runCV() {
 
     results.push({ objectId, label, color, distanceCategory: 'medium', approxX, approxZ, confidence: score })
   }
+
+  _lastBoxes = newBoxes
 
   return results
 }
