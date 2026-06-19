@@ -8,7 +8,7 @@ let detector = null;
 console.log('[CVWorker] Thread started, initializing pipeline...');
 
 // Initialize the model in the background
-pipeline('object-detection', 'Xenova/yolos-tiny').then(pipe => {
+pipeline('object-detection', 'Xenova/detr-resnet-50').then(pipe => {
   detector = pipe;
   console.log('[CVWorker] Pipeline ready!');
   postMessage({ type: 'ready' });
@@ -28,7 +28,8 @@ self.addEventListener('message', async (event) => {
 
   try {
     // Run the heavy inference on the worker thread
-    const output = await detector(dataUrl, { threshold: 0.1, percentage: false });
+    // Threshold bumped to 0.45 to prevent wild hallucinations
+    const output = await detector(dataUrl, { threshold: 0.45, percentage: false });
     postMessage({ id, output });
   } catch (error) {
     postMessage({ id, error: error.message });
