@@ -51,7 +51,7 @@ export function initCVCamera(renderer, getRobotFn, getSceneFn) {
 
   const manifest   = getManifest()
   const camSensor  = manifest?.sensors?.find(s => s.type === 'camera')
-  const eyeFOV     = Math.min(camSensor?.config?.fov || 90, 90)
+  const eyeFOV     = camSensor?.config?.fov || 110
 
   _eyeCamera = new THREE.PerspectiveCamera(eyeFOV, 1.0, 0.05, 25)
 
@@ -59,6 +59,7 @@ export function initCVCamera(renderer, getRobotFn, getSceneFn) {
     minFilter: THREE.LinearFilter,
     magFilter: THREE.LinearFilter,
     format: THREE.RGBAFormat,
+    colorSpace: THREE.SRGBColorSpace
   })
 
   // Clean hidden canvas for inference extraction
@@ -269,10 +270,11 @@ async function _runCV() {
     raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), _eyeCamera)
     const intersects = raycaster.intersectObjects(scene.children, true)
     
-    // Find first valid hit that isn't the robot itself or the floor
+    // Find first valid hit that isn't the robot itself, the floor, or the walls
     let hit = null
     for (const intersect of intersects) {
-      if (intersect.object.userData?.isRobot || intersect.object.name === 'Floor') continue
+      const objName = intersect.object.name || ''
+      if (intersect.object.userData?.isRobot || objName === 'Floor' || objName.includes('Wall') || objName.includes('Boundary')) continue
       hit = intersect
       break
     }
