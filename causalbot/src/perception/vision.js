@@ -100,6 +100,7 @@ export function castVision(robotPosition, facingAngle, scene) {
             totalDist: 0,
             positions: [],
             minDist: Infinity,
+            colorName: hit.object?.userData?.colorName || null,
           })
         }
         
@@ -108,6 +109,10 @@ export function castVision(robotPosition, facingAngle, scene) {
         entry.totalDist += hit.distance
         entry.positions.push(hit.point.clone())
         entry.minDist = Math.min(entry.minDist, hit.distance)
+        // Capture colorName from mesh userData on first hit
+        if (!entry.colorName && hit.object?.userData?.colorName) {
+          entry.colorName = hit.object.userData.colorName
+        }
       }
     }
   }
@@ -115,28 +120,41 @@ export function castVision(robotPosition, facingAngle, scene) {
   // Convert to output format
   const results = []
   for (const [name, data] of detectedObjects) {
-    const avgDist = data.totalDist / data.hits
-    const confidence = Math.min(1.0, data.hits / (rays * 0.3))  // More hits = higher confidence
-    
+    const avgDist  = data.totalDist / data.hits
+    const confidence = Math.min(1.0, data.hits / (rays * 0.3))
+
     // Estimate object center position from hit points
     const center = new THREE.Vector3()
     for (const p of data.positions) center.add(p)
     center.divideScalar(data.positions.length)
-    
+
+    // Add small noise to simulate real sensor uncertainty (±0.15 m)
+    // Real robot sensors are never perfectly accurate
+    const NOISE = 0.15
+    center.x += (Math.random() - 0.5) * 2 * NOISE
+    center.z += (Math.random() - 0.5) * 2 * NOISE
+
     // Angle relative to robot facing
     const dx = center.x - robotPosition.x
     const dz = center.z - robotPosition.z
     const objectAngle = Math.atan2(dx, dz) - facingAngle
-    
+
+    // Try to get colorName from mesh userData for richer LLM context
+    const colorName = data.colorName || null
+    const displayName = colorName
+      ? `${colorName} ${name.replace(/^object_|^ball_[a-z]+$|^box_[a-z]+$/i, m => m.includes('ball') ? 'ball' : 'box')}`
+      : name.replace('object_', '')
+
     results.push({
       id: name,
-      name: name.replace('object_', ''),
+      name: displayName,
+      colorName,
       distance: avgDist,
       angle: normalizeAngle(objectAngle),
       position: center,
       confidence,
     })
-    
+
     // Update perception memory
     updatePerceptionMemory(name, {
       x: center.x,
@@ -144,7 +162,7 @@ export function castVision(robotPosition, facingAngle, scene) {
       z: center.z,
     }, confidence)
   }
-  
+
   return results
 }
 

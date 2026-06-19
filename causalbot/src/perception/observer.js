@@ -12,6 +12,7 @@
 import { getManifest, getObservationSpace } from '../core/manifest.js'
 import { getKnownObjects, decayPerceptionMemory } from '../core/state.js'
 import { castVision, castLidar } from './vision.js'
+import { cvTick, initCVCamera } from './cv_camera.js'
 import { updateDynamicObstacles } from '../nav/pathfinder.js'
 import { updateLidarRays, updateFovCone } from '../debug/visualizer.js'
 
@@ -27,9 +28,17 @@ let _scene = null
 /**
  * Initialize the observer with the scene reference.
  * @param {THREE.Scene} scene
+ * @param {THREE.WebGLRenderer} [renderer] - Optional renderer for real CV camera
+ * @param {function} [getRobotFn] - Optional function returning current robot instance
  */
-export function initObserver(scene) {
+export function initObserver(scene, renderer, getRobotFn) {
   _scene = scene
+
+  // Initialise real CV camera if renderer is provided
+  if (renderer && getRobotFn) {
+    initCVCamera(renderer, getRobotFn, () => scene)
+  }
+
   console.log('[Observer] Initialized')
 }
 
@@ -49,7 +58,13 @@ export function updatePerception(dt, robot) {
   // Reduced rate: 0.015/s keeps objects reliable across multi-step tasks (was 0.03)
   decayPerceptionMemory(0.015, dt)
   
-  // Cast vision (object detection) — lower update rate
+  // ── Real CV camera tick (async, non-blocking, throttled to 600ms) ───────────────
+  // This sends a WebGL canvas screenshot to Gemini Vision API for real object detection.
+  // Results are merged into perception memory alongside raycaster hits.
+  cvTick()
+
+  // ── Raycaster vision (fast, every N frames) ────────────────────────────
+  // Raycaster provides high-frequency positional updates (faster than Vision API).
   const visionConfig = getManifest()?.sensors?.find(s => s.type === 'camera')
   const visionRate = visionConfig?.config?.updateRate || 30
   const visionInterval = Math.round(60 / visionRate)  // frames between updates

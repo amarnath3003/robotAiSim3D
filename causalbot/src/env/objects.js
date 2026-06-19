@@ -24,6 +24,28 @@ import { createWall, createCylinderCollider, createDynamicBody, removeBody, getR
 import { registerObstacle, unregisterObstacle, clearObstacles, rebuildGrid } from '../nav/pathfinder.js'
 import { invalidateVisionCache } from '../perception/vision.js'
 
+// ─── Color Name Helper ─────────────────────────────────────────────────────────
+
+/**
+ * Map a hex color to a human-readable color name.
+ * Used to populate mesh.userData.colorName so the CV system can label objects.
+ * @param {number} hex  e.g. 0xff3322
+ * @returns {string}  e.g. 'red'
+ */
+function _hexToColorName(hex) {
+  const r = (hex >> 16) & 0xff
+  const g = (hex >> 8)  & 0xff
+  const b =  hex        & 0xff
+  if (r > 180 && g < 100 && b < 100) return 'red'
+  if (r < 100 && g < 100 && b > 180) return 'blue'
+  if (r < 100 && g > 150 && b < 100) return 'green'
+  if (r > 200 && g > 200 && b < 100) return 'yellow'
+  if (r > 200 && g > 100 && b < 60)  return 'orange'
+  if (r > 200 && g < 120 && b > 150) return 'pink'
+  if (r > 120 && g > 80  && b < 80)  return 'wooden'  // brown / tan
+  return 'unknown'
+}
+
 // ─── Module State ──────────────────────────────────────────────────────────────
 
 let _scene     = null
@@ -248,12 +270,13 @@ export function createInteractableBox(config) {
 
   const {
     x, z,
-    w     = 0.8,
-    d     = 0.8,
-    h     = 0.8,
-    mass  = 1.2,    // lightweight — easy to push/topple
-    color = 0xc8922a,
+    w         = 0.8,
+    d         = 0.8,
+    h         = 0.8,
+    mass      = 1.2,    // lightweight — easy to push/topple
+    color     = 0xc8922a,
     label,
+    colorName = null,   // Human color name for CV: 'red','blue','wooden', etc.
   } = config
 
   const id      = label ?? `ibox_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
@@ -284,7 +307,8 @@ export function createInteractableBox(config) {
   mesh.castShadow    = true
   mesh.receiveShadow = true
   mesh.name          = id
-  mesh.userData      = { type: 'interactable', subtype: 'box', id, label: label ?? 'box' }
+  mesh.userData      = { type: 'interactable', subtype: 'box', id, label: label ?? 'box',
+                         colorName: colorName ?? _hexToColorName(color), perceptible: true }
 
   // Edge highlight so crates read clearly against the floor
   const edges    = new THREE.EdgesGeometry(geo)
@@ -322,10 +346,11 @@ export function createInteractableBall(config) {
 
   const {
     x, z,
-    radius = 0.35,   // bigger default — beach-ball scale
-    mass   = 0.45,   // very light — airy and responsive
-    color  = 0xff3322,
+    radius    = 0.35,   // bigger default — beach-ball scale
+    mass      = 0.45,   // very light — airy and responsive
+    color     = 0xff3322,
     label,
+    colorName = null,   // Human color name for CV: 'red','blue','green', etc.
   } = config
 
   const id     = label ?? `iball_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
@@ -357,7 +382,8 @@ export function createInteractableBall(config) {
   mesh.castShadow    = true
   mesh.receiveShadow = true
   mesh.name          = id
-  mesh.userData      = { type: 'interactable', subtype: 'ball', id, label: label ?? 'ball' }
+  mesh.userData      = { type: 'interactable', subtype: 'ball', id, label: label ?? 'ball',
+                         colorName: colorName ?? _hexToColorName(color), perceptible: true }
 
   _scene.add(mesh)
   _interactables.set(id, { mesh, body, spawnPos: { x, y: spawnY, z }, held: false, holdRobot: null,
@@ -738,26 +764,21 @@ export function loadDefaultLayout() {
   createObstacleBox({ x: -5,   z:  8,   w: 1.2, d: 0.6, h: 0.7, color: 0x4a3a2d, label: 'crate_3' })
 
   // ── Dynamic interactable BOXES ─────────────────────────────────────────────
-  // Big, lightweight wooden crates — directly in the robot's path (robot spawns at z≈1.8, faces +Z)
-  // and scattered around the arena. Mass 0.8–1.5 kg: visibly moves when hit.
-  createInteractableBox({ x:  0.5,  z:  3.5, w: 0.80, h: 0.80, d: 0.80, mass: 1.0, color: 0xe8952a, label: 'box_A'    })
-  createInteractableBox({ x: -1.8,  z:  4.5, w: 0.85, h: 0.85, d: 0.85, mass: 1.2, color: 0xc87525, label: 'box_B'    })
-  createInteractableBox({ x:  2.5,  z:  3.0, w: 0.90, h: 0.90, d: 0.90, mass: 1.5, color: 0xa86022, label: 'box_C'    })
-  createInteractableBox({ x: -4.0,  z: -2.0, w: 0.95, h: 0.95, d: 0.95, mass: 1.3, color: 0x9a5518, label: 'box_D'    })
-  createInteractableBox({ x:  5.0,  z:  5.0, w: 0.85, h: 0.85, d: 0.85, mass: 1.1, color: 0xd47820, label: 'box_E'    })
-  // Flat crate — wide and light, slides easily
-  createInteractableBox({ x:  0.0,  z:  7.0, w: 1.20, h: 0.40, d: 0.90, mass: 0.9, color: 0xcc9944, label: 'box_flat' })
-  createInteractableBox({ x: -6.0,  z:  4.0, w: 0.80, h: 0.80, d: 0.80, mass: 1.0, color: 0xb87030, label: 'box_F'    })
+  createInteractableBox({ x:  0.5,  z:  3.5, w: 0.80, h: 0.80, d: 0.80, mass: 1.0, color: 0xe8952a, label: 'box_A',    colorName: 'wooden' })
+  createInteractableBox({ x: -1.8,  z:  4.5, w: 0.85, h: 0.85, d: 0.85, mass: 1.2, color: 0xc87525, label: 'box_B',    colorName: 'wooden' })
+  createInteractableBox({ x:  2.5,  z:  3.0, w: 0.90, h: 0.90, d: 0.90, mass: 1.5, color: 0xa86022, label: 'box_C',    colorName: 'brown'  })
+  createInteractableBox({ x: -4.0,  z: -2.0, w: 0.95, h: 0.95, d: 0.95, mass: 1.3, color: 0x9a5518, label: 'box_D',    colorName: 'brown'  })
+  createInteractableBox({ x:  5.0,  z:  5.0, w: 0.85, h: 0.85, d: 0.85, mass: 1.1, color: 0xd47820, label: 'box_E',    colorName: 'wooden' })
+  createInteractableBox({ x:  0.0,  z:  7.0, w: 1.20, h: 0.40, d: 0.90, mass: 0.9, color: 0xcc9944, label: 'box_flat', colorName: 'wooden' })
+  createInteractableBox({ x: -6.0,  z:  4.0, w: 0.80, h: 0.80, d: 0.80, mass: 1.0, color: 0xb87030, label: 'box_F',    colorName: 'brown'  })
 
   // ── Dynamic interactable BALLS ─────────────────────────────────────────────
-  // Large radius, very light mass, high restitution — realistic beach/rubber ball physics.
-  // Placed in front of and around the robot so they're immediately discoverable.
-  createInteractableBall({ x: -0.5, z:  3.0, radius: 0.38, mass: 0.45, color: 0xff3322, label: 'ball_red'    })
-  createInteractableBall({ x: -2.5, z:  2.5, radius: 0.32, mass: 0.35, color: 0x2266ff, label: 'ball_blue'   })
-  createInteractableBall({ x:  3.0, z:  6.0, radius: 0.45, mass: 0.60, color: 0x22cc44, label: 'ball_green'  })
-  createInteractableBall({ x:  1.5, z:  5.5, radius: 0.28, mass: 0.22, color: 0xffdd00, label: 'ball_yellow' })
-  createInteractableBall({ x: -4.5, z:  1.5, radius: 0.35, mass: 0.40, color: 0xff66cc, label: 'ball_pink'   })
-  createInteractableBall({ x:  6.0, z:  0.0, radius: 0.40, mass: 0.50, color: 0xff8800, label: 'ball_orange' })
+  createInteractableBall({ x: -0.5, z:  3.0, radius: 0.38, mass: 0.45, color: 0xff3322, label: 'ball_red',    colorName: 'red'    })
+  createInteractableBall({ x: -2.5, z:  2.5, radius: 0.32, mass: 0.35, color: 0x2266ff, label: 'ball_blue',   colorName: 'blue'   })
+  createInteractableBall({ x:  3.0, z:  6.0, radius: 0.45, mass: 0.60, color: 0x22cc44, label: 'ball_green',  colorName: 'green'  })
+  createInteractableBall({ x:  1.5, z:  5.5, radius: 0.28, mass: 0.22, color: 0xffdd00, label: 'ball_yellow', colorName: 'yellow' })
+  createInteractableBall({ x: -4.5, z:  1.5, radius: 0.35, mass: 0.40, color: 0xff66cc, label: 'ball_pink',   colorName: 'pink'   })
+  createInteractableBall({ x:  6.0, z:  0.0, radius: 0.40, mass: 0.50, color: 0xff8800, label: 'ball_orange', colorName: 'orange' })
 
   // Goal marker at far end
   setGoalMarker(8, -8)

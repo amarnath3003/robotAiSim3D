@@ -272,36 +272,24 @@ class SkillRegistry {
     // Navigation skills (require locomotion)
     this._register({
       name: 'navigate_to',
-      description: 'Navigate to a target object or position using pathfinding.',
+      description: 'Navigate to a perceived object. The object must be in perception memory (run scan_for first if not).',
       requires: ['locomotion:ground'],
-      args: { target: 'object ID or name' },
+      args: { target: 'object ID or color description (e.g. "ball_red", "red ball", "box_A")' },
       execute: async (ctx) => {
         const target = ctx.args?.target
         if (!target) throw new Error('navigate_to requires a target')
 
-        const lower = target.toLowerCase()
-        let pos = null
-
-        // 1. Try perception memory first (freshly observed positions)
-        const known = ctx.getKnownObjects()
-        const obj = known.find(o =>
-          o.id === target ||
-          o.id.toLowerCase() === lower ||
-          o.id.toLowerCase().includes(lower) ||
-          lower.includes(o.id.toLowerCase())
-        )
-        if (obj?.position) pos = obj.position
-
-        // 2. Fallback: direct physics lookup — works even before any scan
-        if (!pos) pos = ctx.findObject?.(target)
-
-        if (!pos) {
-          throw new Error(`Object "${target}" not found. Check the object name or run scan_room first.`)
+        // ONLY use perception memory — no direct physics lookup
+        const match = ctx.findPerceivedObject?.(target)
+        if (!match?.position) {
+          throw new Error(
+            `"${target}" not in perception memory. Use scan_for(target:"${target}") first.`
+          )
         }
 
-        ctx.setStatus(`Navigating to ${target}...`)
+        ctx.setStatus(`Navigating to ${match.id} (approx pos: ${match.position.x.toFixed(1)}, ${match.position.z.toFixed(1)})...`)
         const currentPos = ctx.getPos()
-        await ctx.navigateTo(pos.x, currentPos.y, pos.z)
+        await ctx.navigateTo(match.position.x, currentPos.y, match.position.z)
       },
     })
     
@@ -375,49 +363,45 @@ class SkillRegistry {
     // Manipulation
     this._register({
       name: 'pick_up',
-      description: 'Pick up a target object by name or id. Navigates to it, extends arm, and grabs.',
+      description: 'Pick up an object. Object must be in perception memory (run scan_for first if not).',
       requires: ['manipulation:grasp'],
-      args: { target: 'object name or id (e.g. ball_red, box_crate_A)' },
+      args: { target: 'object id or color description (e.g. "ball_red", "red ball")' },
       execute: async (ctx) => {
         const target = ctx.args?.target
         if (!target) throw new Error('pick_up requires a target')
 
-        const lower = target.toLowerCase()
-
-        // 1. Try direct physics position lookup (works even before any scan)
-        let pos = ctx.findObject?.(target)
-
-        // 2. Fallback: search perception memory
-        if (!pos) {
-          const known = ctx.getKnownObjects()
-          const obj = known.find(o =>
-            o.id === target ||
-            o.id.toLowerCase() === lower ||
-            o.id.toLowerCase().includes(lower) ||
-            lower.includes(o.id.toLowerCase())
+        // ONLY use perception memory
+        const match = ctx.findPerceivedObject?.(target)
+        if (!match?.position) {
+          throw new Error(
+            `"${target}" not in perception memory. Use scan_for(target:"${target}") first.`
           )
-          if (obj) pos = obj.position
         }
 
-        if (!pos) {
-          throw new Error(`Object "${target}" not found. Try scan_room first.`)
-        }
-
-        ctx.setStatus(`Navigating to ${target}...`)
+        ctx.setStatus(`Navigating to pick up ${match.id}...`)
         const currentPos = ctx.getPos()
-        await ctx.navigateTo(pos.x, currentPos.y, pos.z)
+        await ctx.navigateTo(match.position.x, currentPos.y, match.position.z)
 
-        // Extend arm forward for grab animation
+        // Do a quick CV capture at close range to confirm current position (ball may have moved)
+        ctx.setStatus(`Scanning close range for ${match.id}...`)
+        await ctx.captureCV?.()
+        await ctx.wait(200)
+
+        // Extend arm for grab
         ctx.setJointGroup('left_arm', 90)
         await ctx.wait(400)
 
-        const success = ctx.grab(target)
+        // Use object ID from perception memory, or fuzzy-match from env
+        const grabId = match.id
+        const success = ctx.grab(grabId)
         if (!success) {
           ctx.setJointGroup('left_arm', 0)
-          throw new Error(`Failed to grab "${target}" — too far or not interactable`)
+          throw new Error(
+            `Failed to grab "${grabId}" — may have moved. Re-scan and try again.`
+          )
         }
 
-        ctx.setStatus(`Holding ${target}`)
+        ctx.setStatus(`Holding ${grabId}`)
       },
     })
 
@@ -463,9 +447,9 @@ class SkillRegistry {
 
     this._register({
       name: 'place_near',
-      description: 'Carry the held object to a position near a named target object and set it down.',
+      description: 'Carry the held object near a perceived target object and place it down.',
       requires: ['manipulation:grasp'],
-      args: { target: 'object name or id to place near (e.g. box_A)', distance: 'standoff distance in metres (default 1.0)' },
+      args: { target: 'object id or description to place near', distance: 'standoff distance in metres (default 1.0)' },
       execute: async (ctx) => {
         if (!ctx.robot?.heldObjects?.length) {
           throw new Error('Not holding any object. Use pick_up first.')
@@ -474,40 +458,28 @@ class SkillRegistry {
         if (!target) throw new Error('place_near requires a target argument')
 
         const distance = parseFloat(ctx.args?.distance) || 1.0
-        const lower = target.toLowerCase()
 
-        // Find target position — direct physics lookup first, then perception memory
-        let targetPos = ctx.findObject?.(target)
-        if (!targetPos) {
-          const known = ctx.getKnownObjects()
-          const obj = known.find(o =>
-            o.id === target ||
-            o.id.toLowerCase() === lower ||
-            o.id.toLowerCase().includes(lower) ||
-            lower.includes(o.id.toLowerCase())
-          )
-          if (obj?.position) targetPos = obj.position
+        // Perception-only lookup
+        const match = ctx.findPerceivedObject?.(target)
+        if (!match?.position) {
+          throw new Error(`"${target}" not in perception memory. Use scan_for(target:"${target}") first.`)
         }
+        const targetPos = match.position
 
-        if (!targetPos) {
-          throw new Error(`Target "${target}" not found. Check the object name or run scan_room first.`)
-        }
-
-        // Compute an approach offset so we stop near the target, not on top of it
         const cur = ctx.getPos()
-        const dx = targetPos.x - cur.x
-        const dz = targetPos.z - cur.z
+        const dx  = targetPos.x - cur.x
+        const dz  = targetPos.z - cur.z
         const len = Math.sqrt(dx * dx + dz * dz) || 1
         const placeX = targetPos.x - (dx / len) * distance
         const placeZ = targetPos.z - (dz / len) * distance
 
-        ctx.setStatus(`Carrying to near ${target}...`)
+        ctx.setStatus(`Carrying to near ${match.id}...`)
         await ctx.navigateTo(placeX, cur.y, placeZ)
 
         ctx.release()
         ctx.setJointGroup('left_arm', 0)
         await ctx.wait(400)
-        ctx.setStatus(`Object placed near ${target}`)
+        ctx.setStatus(`Object placed near ${match.id}`)
       },
     })
 
@@ -534,35 +506,26 @@ class SkillRegistry {
 
     this._register({
       name: 'push',
-      description: 'Apply a directed physics impulse to push a named object away from the robot.',
+      description: 'Push an object. Object must be in perception memory (use scan_for first).',
       requires: ['locomotion:ground'],
-      args: { target: 'object name or id', force: 'impulse strength (default 6)' },
+      args: { target: 'object id or description', force: 'impulse strength (default 6)' },
       execute: async (ctx) => {
         const target = ctx.args?.target
         if (!target) throw new Error('push requires a target')
 
-        const lower = target.toLowerCase()
-        let pos = ctx.findObject?.(target)
-
-        if (!pos) {
-          const known = ctx.getKnownObjects()
-          const obj = known.find(o =>
-            o.id.toLowerCase() === lower || o.id.toLowerCase().includes(lower)
-          )
-          if (obj) pos = obj.position
+        // Perception-only lookup
+        const match = ctx.findPerceivedObject?.(target)
+        if (!match?.position) {
+          throw new Error(`"${target}" not in perception memory. Use scan_for(target:"${target}") first.`)
         }
 
-        if (!pos) {
-          throw new Error(`Object "${target}" not found. Try scan_room first.`)
-        }
-
-        // Navigate close to the object first
-        ctx.setStatus(`Moving to push ${target}...`)
-        const cur = ctx.getPos()
-        const dx = pos.x - cur.x
-        const dz = pos.z - cur.z
+        ctx.setStatus(`Moving to push ${match.id}...`)
+        const pos  = match.position
+        const cur  = ctx.getPos()
+        const dx   = pos.x - cur.x
+        const dz   = pos.z - cur.z
         const dist = Math.sqrt(dx * dx + dz * dz)
-        const stopDist = 0.9  // stop 0.9 m away
+        const stopDist = 0.9
         if (dist > stopDist + 0.1) {
           await ctx.navigateTo(
             pos.x - (dx / dist) * stopDist,
@@ -571,11 +534,9 @@ class SkillRegistry {
           )
         }
 
-        // Apply direct impulse via physics
         const force = parseFloat(ctx.args?.force) || 6
-        ctx.robot && ctx.pushObject?.(target, force)
-
-        ctx.setStatus(`Pushed ${target}!`)
+        ctx.robot && ctx.pushObject?.(match.id, force)
+        ctx.setStatus(`Pushed ${match.id}!`)
       },
     })
     
@@ -598,29 +559,39 @@ class SkillRegistry {
     
     this._register({
       name: 'scan_for',
-      description: 'Rotate and scan specifically looking for a named object.',
+      description: 'Rotate and scan with camera to find a specific object by description. Stops when found.',
       requires: [],
-      args: { target: 'object name to search for' },
+      args: { target: 'object description to search for (e.g. "red ball", "blue ball", "wooden box")' },
       execute: async (ctx) => {
         const target = ctx.args?.target || 'unknown'
-        ctx.setStatus(`Scanning for ${target}...`)
+        ctx.setStatus(`Scanning for "${target}"...`)
 
-        // Reduced from 1.5 — slower scan improves sensor coverage at 30Hz vision
-        const speed = 1.0
-        const duration = Math.ceil((2 * Math.PI / speed) * 1000 * 1.05)
-        ctx.rotate(speed)
-        await ctx.wait(duration)
-        ctx.stop()
+        const speed    = 1.0
+        const fullCircle = (2 * Math.PI / speed) * 1000  // ms for 360°
+        const stepMs   = 400   // rotate in 400ms increments
+        const steps    = Math.ceil(fullCircle / stepMs)
 
-        // Check if we found it
-        const known = ctx.getKnownObjects()
-        const found = known.find(o => o.id.includes(target) || target.includes(o.id))
+        for (let i = 0; i < steps; i++) {
+          ctx.rotate(speed)
+          await ctx.wait(stepMs)
+          ctx.stop()
+          await ctx.wait(100)   // brief pause so CV can process the frame
 
-        if (found) {
-          ctx.setStatus(`Found ${target}!`)
-        } else {
-          ctx.setStatus(`${target} not found in scan range`)
+          // Trigger CV capture at each step for real visual detection
+          await ctx.captureCV?.()
+          await ctx.wait(200)   // wait for CV API response to arrive
+
+          // Check perception memory after each CV capture
+          const match = ctx.findPerceivedObject?.(target)
+          if (match) {
+            ctx.setStatus(`Found "${match.id}" at approx (${match.position.x.toFixed(1)}, ${match.position.z.toFixed(1)})`)
+            ctx.stop()
+            return
+          }
         }
+
+        ctx.stop()
+        ctx.setStatus(`"${target}" not found after full scan — try explore() and scan again`)
       },
     })
     
@@ -814,10 +785,7 @@ class SkillRegistry {
         await ctx.wait(duration)
         ctx.stop()
 
-        const known = ctx.getKnownObjects()
-        const match = target
-          ? known.find(o => o.id.toLowerCase().includes(target.toLowerCase()))
-          : known[0]   // find first visible object if no target given
+        const match = target ? ctx.findPerceivedObject?.(target) : ctx.getPerceivedObjects?.()[0]
 
         if (!match) {
           ctx.setStatus(`"${target}" not found — try scanning first`)
@@ -828,6 +796,43 @@ class SkillRegistry {
         const pos = ctx.getPos()
         await ctx.navigateTo(match.position.x, pos.y, match.position.z)
         ctx.setStatus(`Reached "${match.id}"`)
+      },
+    })
+
+    this._register({
+      name: 'move_and_look',
+      description: 'Move to a new vantage point and do a quick visual scan. Use when scan_for fails to find the target.',
+      requires: ['locomotion:ground'],
+      args: { direction: 'forward|left|right|back (default: random)', distance: 'metres to move (default: 2.5)' },
+      execute: async (ctx) => {
+        const dir  = ctx.args?.direction || 'forward'
+        const dist = parseFloat(ctx.args?.distance) || 2.5
+
+        const pos = ctx.getPos()
+        const angle = { forward: 0, right: Math.PI / 2, back: Math.PI, left: -Math.PI / 2 }[dir] ?? 0
+
+        const tx = pos.x + Math.sin(angle) * dist
+        const tz = pos.z + Math.cos(angle) * dist
+
+        ctx.setStatus(`Moving ${dir} ${dist}m to new vantage...`)
+        try {
+          await ctx.navigateTo(tx, pos.y, tz)
+        } catch {
+          ctx.setStatus('Pathfinding blocked — scanning from here')
+        }
+
+        // Do a 180-degree look sweep from the new position
+        ctx.setStatus('Looking around...')
+        for (let i = 0; i < 5; i++) {
+          ctx.rotate(0.8)
+          await ctx.wait(300)
+          ctx.stop()
+          await ctx.wait(80)
+          await ctx.captureCV?.()
+          await ctx.wait(180)
+        }
+        ctx.stop()
+        ctx.setStatus('Look sweep complete')
       },
     })
 

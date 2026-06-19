@@ -111,7 +111,7 @@ async function boot() {
     // ─── Step 5: Initialize Perception ───────────────────────────────────
     console.log('[Boot] Initializing perception...')
     initVision(scene)
-    initObserver(scene)
+    initObserver(scene, renderer, () => getActiveRobot())   // pass renderer for real CV camera
     console.log('')
     
     // ─── Step 6: Initialize Skills ───────────────────────────────────────

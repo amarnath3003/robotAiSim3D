@@ -27,8 +27,6 @@ import {
   grabInteractable,
   releaseInteractable,
   pushInteractable,
-  findInteractablePosition,
-  listInteractables,
 } from '../env/objects.js'
 
 // ─── Plan Execution State ──────────────────────────────────────────────────────
@@ -440,13 +438,39 @@ export function buildExecutionContext(robot, args, skillRegistry) {
       robot.heldObjects.pop()
     },
 
-    // Direct position lookup for objects — works even before vision scan
-    findObject: (nameOrId) => findInteractablePosition(nameOrId),
-    listObjects: () => listInteractables(),
     pushObject: (objectId, force = 6) => pushInteractable(objectId, force, 0, 0, robot),
-    
-    // ─── Perception ──────────────────────────────────────────────
-    getKnownObjects: () => getKnownObjects(0.2),
+
+    // ─── Perception (perception-memory only — NO direct physics lookup) ───
+    // Skills must use getPerceivedObjects() to find object positions.
+    // This enforces "environment unknowness" — the robot only knows what it has seen.
+    getKnownObjects:     () => getKnownObjects(0.2),
+    getPerceivedObjects: () => getKnownObjects(0.1),
+
+    // Fuzzy-match an object from perception memory by name or color description
+    findPerceivedObject: (nameOrDesc) => {
+      const lower = nameOrDesc.toLowerCase()
+      const known = getKnownObjects(0.1)
+      // Try exact id match first
+      let match = known.find(o => o.id.toLowerCase() === lower)
+      if (match) return match
+      // Try id contains
+      match = known.find(o => o.id.toLowerCase().includes(lower) || lower.includes(o.id.toLowerCase()))
+      if (match) return match
+      // Try color-based fuzzy (e.g. "red" matches "ball_red")
+      match = known.find(o => {
+        const parts = o.id.toLowerCase().split('_')
+        return parts.some(p => lower.includes(p) || p.includes(lower))
+      })
+      return match || null
+    },
+
+    // Trigger an immediate CV capture (for scan skills that need live results)
+    captureCV: async () => {
+      try {
+        const { captureAndAnalyze } = await import('../perception/cv_camera.js')
+        return await captureAndAnalyze()
+      } catch { return [] }
+    },
     
     checkFeasibility: (action, params) => {
       return robot.checkFeasibility(action, params)

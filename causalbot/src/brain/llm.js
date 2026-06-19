@@ -18,7 +18,7 @@ import { getRecentHistory, getKnownObjects } from '../core/state.js'
 import { sceneGraph } from '../perception/scene_graph.js'
 import { episodicMemory } from './episodic_memory.js'
 import { worldModel } from './world_model.js'
-import { listInteractables } from '../env/objects.js'
+// NOTE: listInteractables intentionally NOT imported — LLM must not have omniscient object knowledge
 
 // ─── Configuration ─────────────────────────────────────────────────────────────
 
@@ -81,57 +81,67 @@ export function getConversationHistory() {
 // ─── System Prompt Generation ──────────────────────────────────────────────────
 
 /**
- * Build the system prompt that gives the LLM full context about the robot.
- * This is the bridge between the manifest and the AI brain.
+ * Build the system prompt. Robot has NO omniscient world knowledge.
+ * It must use sensors (CV camera, LiDAR) to discover the environment.
  */
 function buildSystemPrompt() {
   const manifest = getManifest()
   if (!manifest) return 'You are a robot controller. No robot manifest loaded.'
-  
+
   const robotDesc = generateLLMDescription()
   const feasibilityRules = generateFeasibilityPrompt()
-  
-  return `You are the brain of an autonomous robot operating in a physics simulation.
-Your decisions control a real physical body with real constraints.
+
+  return `You are the brain of a fully autonomous robot. You have NO built-in knowledge of the world.
+You discover your environment exclusively through your sensors: a camera (CV) and LiDAR.
 
 # Robot Profile
 ${robotDesc}
 
 # ${feasibilityRules}
 
-# Perception
-- "All Objects in Scene" lists every object that EXISTS in the world (names are always accurate).
-- Objects in "Scene" have been sensor-observed — they have known positions and confidence scores.
-- pick_up, push, and navigate_to all use direct physics lookup internally — NO scan required.
-- scan_room is only needed when you need exact coordinates for place(x, z) or distance math.
+# PERCEPTION (Read carefully)
+You are BLIND to the world by default. The only things you know are:
+1. Your current position and what you are holding.
+2. Objects listed in "Perceived Objects" below — detected by your camera/sensors.
+3. Your recent action history.
 
-# Task Decomposition Guide
-"pick up X"                    → [pick_up(target: "X")]
-"place near Y"                 → [place_near(target: "Y")]
-"pick up X and place near Y"   → [pick_up(target: "X"), place_near(target: "Y")]
-"navigate to X"                → [navigate_to(target: "X")]
-"scan the room"                → [scan_room]
-"find X and go to it"          → [find_goal(target: "X")]
-"push X"                       → [push(target: "X")]
-"go forward 2 seconds"         → [move_forward(duration: 2000)]
-"turn left 90 degrees"         → [turn_left(degrees: 90)]
-"patrol"                       → [patrol]
-"go home / return to start"    → [return_home]
-"survey the area"              → [survey_grid]
-For multi-step tasks like "pick up X and put it near Y": do NOT add scan_room unless truly needed.
+You do NOT have a map. You do NOT know where anything is unless it appears in "Perceived Objects".
+Object positions are APPROXIMATE (plus or minus 0.3m) — sensors are not perfectly accurate.
+Physics-driven objects (balls, boxes) can MOVE — re-scan if a position seems stale.
+
+# HOW TO FIND AN OBJECT
+1. Check "Perceived Objects" — if the target is there with confidence > 0.3, navigate directly.
+2. NOT in memory? Use scan_for(target:"description") to rotate and look with camera.
+3. Scan failed? Use explore() or move_and_look() to change position, then scan again.
+4. Persist intelligently — try multiple angles and positions. This is how real robots work.
+5. Never give up after one scan. Explore, reposition, scan again.
+
+# TASK DECOMPOSITION
+"pick up X"        → [scan_for(target:"X"), navigate_to(target:"X"), pick_up(target:"X")]
+"push X"           → [scan_for(target:"X"), navigate_to(target:"X"), push(target:"X")]
+"navigate to X"    → [scan_for(target:"X"), navigate_to(target:"X")]
+"place near Y"     → [scan_for(target:"Y"), place_near(target:"Y")]  (if already holding)
+"scan the room"    → [scan_room]
+"go forward 2s"    → [move_forward(duration:2000)]
+"turn left 90deg"  → [turn_left(degrees:90)]
+"explore"          → [explore(steps:4)]
+
+SKIP scan_for if the object already appears in "Perceived Objects" with confidence > 0.4.
+
+# OBJECT IDENTITY
+- Use the EXACT id from "Perceived Objects" (e.g. "ball_red", "ball_blue", "box_A").
+- CV labels objects by color/type: "red ball" maps to id "ball_red".
+- If unsure of exact id, use the color description — skills will fuzzy-match.
+- Object IDs are case-sensitive: box_A not box_a.
 
 # Execution Rules
-- Break complex tasks into the minimum number of atomic skill steps.
-- If something is physically impossible given the robot constraints, set infeasible: true and explain why.
-- After failure, analyze what went wrong and produce a different recovery plan.
-
-# Critical Object ID Rules
-- Use EXACT names from "All Objects in Scene" (e.g. ball_red, ball_blue, box_A, box_B).
-- Do NOT say "the ball" — use the exact ID "ball_red".
-- Object names are case-sensitive: box_A not box_a.
+- Break complex tasks into atomic skill steps.
+- If physically impossible given robot constraints, set infeasible:true and explain why.
+- After failure, analyze what went wrong and produce a DIFFERENT recovery plan.
+- Never repeat the same failed plan.
 
 # Response Format
-Always respond with ONLY valid JSON — no markdown code blocks, no text outside the JSON object.`
+Always respond with ONLY valid JSON — no markdown, no text outside the JSON object.`
 }
 
 // ─── Public API ────────────────────────────────────────────────────────────────
@@ -354,16 +364,20 @@ function buildPlanningPrompt(instruction, { knownObjects, history, availableSkil
   }
   lines.push('')
 
-  // Always show all interactable objects so LLM can plan without requiring a scan first
-  try {
-    const allObjects = listInteractables()
-    if (allObjects && allObjects.length > 0) {
-      lines.push(`# All Objects in Scene (use EXACT names as skill arg values):`)
-      lines.push(allObjects.join(', '))
-      lines.push('Note: pick_up, push, navigate_to, place_near all do direct physics lookup — no scan needed.')
-      lines.push('')
+  // Perceived Objects — ONLY from sensor memory, never from physics ground truth.
+  // If empty: robot has not scanned. LLM must plan to scan first.
+  lines.push(`# Perceived Objects (detected by camera/sensors — positions are APPROXIMATE):`)
+  const perceivedObjects = getKnownObjects(0.1)
+  if (perceivedObjects.length > 0) {
+    for (const o of perceivedObjects) {
+      const ageMs  = Date.now() - (o.lastSeen || Date.now())
+      const stale  = ageMs > 5000 ? ` [STALE ${(ageMs / 1000).toFixed(0)}s ago — may have moved]` : ''
+      lines.push(`- ${o.id}  conf=${o.confidence.toFixed(2)}  pos=(${o.position.x.toFixed(1)}, ${o.position.z.toFixed(1)})${stale}`)
     }
-  } catch (_) { /* env not yet initialized */ }
+  } else {
+    lines.push(`  (none — robot has not scanned yet. Use scan_for or scan_room to discover objects.)`)
+  }
+  lines.push('')
   
   // Recent history
   if (history.length > 0) {
