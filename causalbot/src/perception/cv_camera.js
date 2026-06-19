@@ -17,7 +17,7 @@ import { getManifest } from '../core/manifest.js'
 
 // ─── Configuration ─────────────────────────────────────────────────────────────
 
-const CV_INTERVAL_MS  = 600    // CV analysis every 600ms (configurable)
+const CV_INTERVAL_MS  = 0      // 0ms = Run as fast as possible (Real-time)
 const CV_NOISE_M      = 0.30   // Gaussian position noise radius (m) — visual uncertainty
 const CAPTURE_SIZE    = 256    // Off-screen render target size (pixels, square)
 
