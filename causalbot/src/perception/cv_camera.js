@@ -66,6 +66,22 @@ export function initCVCamera(renderer, getRobotFn, getSceneFn) {
   _pixelCanvas.height = CAPTURE_SIZE
   _pixelCtx           = _pixelCanvas.getContext('2d', { willReadFrequently: true })
 
+  // Picture-in-Picture Setup
+  _pixelCanvas.id = 'cv-pip'
+  _pixelCanvas.style.position = 'absolute'
+  _pixelCanvas.style.bottom = '20px'
+  _pixelCanvas.style.right = '20px'
+  _pixelCanvas.style.width = '256px'
+  _pixelCanvas.style.height = '256px'
+  _pixelCanvas.style.border = '2px solid rgba(0, 255, 204, 0.5)'
+  _pixelCanvas.style.borderRadius = '8px'
+  _pixelCanvas.style.zIndex = '9999'
+  _pixelCanvas.style.pointerEvents = 'none'
+  _pixelCanvas.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)'
+  if (!document.getElementById('cv-pip')) {
+    document.body.appendChild(_pixelCanvas)
+  }
+
   // Initialize Web Worker
   console.log('[CVCamera] ⏳ Spawning Web Worker for local vision model...')
   _worker = new Worker(new URL('./cv_worker.js', import.meta.url), { type: 'module' })
@@ -121,8 +137,10 @@ async function _runCV() {
   const ori = robot.orientation
 
   // Clone camera orientation for raycasting (in case robot moves during async inference)
+  // Fix: Robot is oriented +Z, but THREE.js cameras look down -Z. Rotate by 180 degrees.
   const capturePos = new THREE.Vector3(rp.x, rp.y + 0.55, rp.z)
   const captureOri = new THREE.Quaternion().copy(ori)
+  captureOri.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI))
 
   _eyeCamera.position.copy(capturePos)
   _eyeCamera.quaternion.copy(captureOri)
@@ -164,6 +182,7 @@ async function _runCV() {
     _worker.postMessage({ id: currentId, dataUrl })
   })
 
+  // Clear previous overlays (optional, but putImageData overrides it anyway on next tick)
   if (!output || !output.length) return []
 
   // ── 5. Process Detections (Color Sampling & 3D Mapping) ────────────────────
@@ -185,6 +204,20 @@ async function _runCV() {
     // Sample exact RGB pixel color from the 2D context
     const pixel = _pixelCtx.getImageData(cx, cy, 1, 1).data
     const color = _rgbToColorName(pixel[0], pixel[1], pixel[2])
+
+    // Draw bounding box on the PiP canvas
+    _pixelCtx.strokeStyle = 'lime'
+    _pixelCtx.lineWidth = 2
+    _pixelCtx.strokeRect(box.xmin, box.ymin, box.xmax - box.xmin, box.ymax - box.ymin)
+
+    // Draw label background and text
+    const text = `${color} ${label} (${(score*100).toFixed(0)}%)`
+    _pixelCtx.fillStyle = 'rgba(0, 0, 0, 0.7)'
+    const textWidth = _pixelCtx.measureText(text).width
+    _pixelCtx.fillRect(box.xmin, box.ymin > 14 ? box.ymin - 14 : 0, textWidth + 4, 14)
+    _pixelCtx.fillStyle = 'lime'
+    _pixelCtx.font = '10px Arial'
+    _pixelCtx.fillText(text, box.xmin + 2, box.ymin > 14 ? box.ymin - 4 : 10)
 
     // Convert to NDC (Normalized Device Coordinates) for Raycasting
     const ndcX = (cx / CAPTURE_SIZE) * 2 - 1

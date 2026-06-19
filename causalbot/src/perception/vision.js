@@ -76,12 +76,11 @@ export function castVision(robotPosition, facingAngle, scene) {
   
   for (let i = 0; i < rays; i++) {
     const angle = startAngle + angleStep * i
-    // LB-3: robot forward = (−sin h, 0, −cos h); rays were pointing backward
-    //        because the old code used +sin/+cos instead of −sin/−cos
+    // Fix: Robot is oriented towards +Z. The rays should point forward.
     const direction = new THREE.Vector3(
-      -Math.sin(angle),
+      Math.sin(angle),
       0,
-      -Math.cos(angle)
+      Math.cos(angle)
     ).normalize()
     
     _raycaster.set(sensorPos, direction)
