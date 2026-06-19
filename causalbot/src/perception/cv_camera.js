@@ -139,6 +139,11 @@ async function _runCV() {
   // Clone camera orientation for raycasting (in case robot moves during async inference)
   // Fix: Robot is oriented +Z, but THREE.js cameras look down -Z. Rotate by 180 degrees.
   const capturePos = new THREE.Vector3(rp.x, rp.y + 0.55, rp.z)
+  
+  // Offset camera forward (+Z of the robot's local orientation) so it's outside its own head
+  const forwardOffset = new THREE.Vector3(0, 0, 1).applyQuaternion(ori)
+  capturePos.add(forwardOffset.multiplyScalar(0.45))
+
   const captureOri = new THREE.Quaternion().copy(ori)
   captureOri.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI))
 
