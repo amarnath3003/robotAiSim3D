@@ -15,12 +15,6 @@ import * as THREE from 'three'
 import { updatePerceptionMemory } from '../core/state.js'
 import { getManifest } from '../core/manifest.js'
 
-// Import Transformers.js
-import { pipeline, env } from '@xenova/transformers'
-
-// Disable local models fallback to ensure it fetches from HF Hub correctly
-env.allowLocalModels = false;
-
 // ─── Configuration ─────────────────────────────────────────────────────────────
 
 const CV_INTERVAL_MS  = 600    // CV analysis every 600ms (configurable)
@@ -38,10 +32,12 @@ let _pixelCanvas  = null    // HTMLCanvasElement — for readback → dataURL
 let _pixelCtx     = null    // CanvasRenderingContext2D
 
 let _lastCVTime   = 0
-let _active       = false   // true when model is loaded
+let _active       = false   // true when model is loaded in worker
 let _cvBusy       = false   // prevent concurrent calls
 
-let _detector     = null    // Local YOLOS-tiny pipeline
+let _worker       = null    // Web Worker for background inference
+let _pendingTasks = new Map() // Maps message ID to Promise resolve/reject
+let _taskId       = 0
 
 // ─── Public API ────────────────────────────────────────────────────────────────
 
@@ -70,19 +66,32 @@ export function initCVCamera(renderer, getRobotFn, getSceneFn) {
   _pixelCanvas.height = CAPTURE_SIZE
   _pixelCtx           = _pixelCanvas.getContext('2d', { willReadFrequently: true })
 
-  // Initialize Local Model Asynchronously
-  console.log('[CVCamera] ⏳ Loading local vision model (yolos-tiny)...')
-  pipeline('object-detection', 'Xenova/yolos-tiny').then(pipe => {
-    _detector = pipe
-    _active = true
-    console.log('[CVCamera] ✓ Local vision model loaded and active!')
-  }).catch(err => {
-    console.error('[CVCamera] ❌ Failed to load local vision model:', err)
-  })
+  // Initialize Web Worker
+  console.log('[CVCamera] ⏳ Spawning Web Worker for local vision model...')
+  _worker = new Worker(new URL('./cv_worker.js', import.meta.url), { type: 'module' })
+
+  _worker.onmessage = (event) => {
+    const data = event.data
+    if (data.type === 'ready') {
+      _active = true
+      console.log('[CVCamera] ✓ Background vision worker active!')
+    } else if (data.id !== undefined) {
+      const task = _pendingTasks.get(data.id)
+      if (task) {
+        if (data.error) task.reject(new Error(data.error))
+        else task.resolve(data.output)
+        _pendingTasks.delete(data.id)
+      }
+    }
+  }
+
+  _worker.onerror = (error) => {
+    console.error('[CVCamera] ❌ Web Worker Error:', error)
+  }
 }
 
 export function cvTick() {
-  if (!_active || _cvBusy || !_detector) return
+  if (!_active || _cvBusy || !_worker) return
   const now = Date.now()
   if (now - _lastCVTime < CV_INTERVAL_MS) return
   _lastCVTime = now
@@ -94,7 +103,7 @@ export function cvTick() {
 }
 
 export async function captureAndAnalyze() {
-  if (!_active || !_detector) return []
+  if (!_active || !_worker) return []
   return _runCV()
 }
 
@@ -111,8 +120,12 @@ async function _runCV() {
   const rp  = robot.position
   const ori = robot.orientation
 
-  _eyeCamera.position.set(rp.x, rp.y + 0.55, rp.z)
-  _eyeCamera.quaternion.copy(ori)
+  // Clone camera orientation for raycasting (in case robot moves during async inference)
+  const capturePos = new THREE.Vector3(rp.x, rp.y + 0.55, rp.z)
+  const captureOri = new THREE.Quaternion().copy(ori)
+
+  _eyeCamera.position.copy(capturePos)
+  _eyeCamera.quaternion.copy(captureOri)
   _eyeCamera.updateMatrixWorld()
 
   // ── 2. Render robot's eye view to off-screen target ───────────────────────
@@ -142,15 +155,23 @@ async function _runCV() {
   }
   _pixelCtx.putImageData(imgData, 0, 0)
 
-  // ── 4. Encode to JPEG base64 for Transformers.js ───────────────────────────
+  // ── 4. Encode to JPEG base64 and Dispatch to Worker ────────────────────────
   const dataUrl = _pixelCanvas.toDataURL('image/jpeg', 0.8)
-  
-  // ── 5. Run Local Object Detection ──────────────────────────────────────────
-  // Threshold 0.1 because tiny models in simple sims often yield low confidences
-  const output = await _detector(dataUrl, { threshold: 0.1, percentage: false })
+  const currentId = ++_taskId
+
+  const output = await new Promise((resolve, reject) => {
+    _pendingTasks.set(currentId, { resolve, reject })
+    _worker.postMessage({ id: currentId, dataUrl })
+  })
+
   if (!output || !output.length) return []
 
-  // ── 6. Process Detections (Color Sampling & 3D Mapping) ────────────────────
+  // ── 5. Process Detections (Color Sampling & 3D Mapping) ────────────────────
+  // Restore the camera to its captured state so raycasting aligns perfectly with the image
+  _eyeCamera.position.copy(capturePos)
+  _eyeCamera.quaternion.copy(captureOri)
+  _eyeCamera.updateMatrixWorld()
+
   const raycaster = new THREE.Raycaster()
   const results = []
 
