@@ -78,7 +78,11 @@ export function initCVCamera(renderer, getRobotFn, getSceneFn) {
   _pixelCanvas.style.zIndex = '9999'
   _pixelCanvas.style.pointerEvents = 'none'
   _pixelCanvas.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)'
-  if (!document.getElementById('cv-pip')) {
+  
+  const existingPip = document.getElementById('cv-pip')
+  if (existingPip) {
+    existingPip.replaceWith(_pixelCanvas)
+  } else {
     document.body.appendChild(_pixelCanvas)
   }
 
