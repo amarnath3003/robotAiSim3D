@@ -134,7 +134,7 @@
       "position": { "x": 0, "y": 0.55, "z": 0.15 },
       "orientation": { "pitch": 0, "yaw": 0, "roll": 0 },
       "config": {
-        "fov": 150,
+        "fov": 179,
         "range": 8.0,
         "rays": 36,
         "updateRate": 30
