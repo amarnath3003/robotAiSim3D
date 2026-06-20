@@ -17,7 +17,7 @@ import { getManifest } from '../core/manifest.js'
 
 // ─── Configuration ─────────────────────────────────────────────────────────────
 
-const CV_INTERVAL_MS  = 0      // 0ms = Run as fast as possible (Real-time)
+const CV_INTERVAL_MS  = 150    // Run mock CV every 150ms to save CPU
 const CV_NOISE_M      = 0.30   // Gaussian position noise radius (m) — visual uncertainty
 const CAPTURE_SIZE    = 256    // Off-screen render target size (pixels, square)
 
@@ -93,6 +93,7 @@ export function initCVCamera(renderer, getRobotFn, getSceneFn) {
     document.body.appendChild(_pipCanvas)
   }
 
+  /* --- REAL CV (Transformers.js) Commented out ---
   console.log('[CVCamera] ⏳ Spawning Web Worker for local vision model...')
   _worker = new Worker(new URL('./cv_worker.js', import.meta.url), { type: 'module' })
 
@@ -114,10 +115,15 @@ export function initCVCamera(renderer, getRobotFn, getSceneFn) {
   _worker.onerror = (error) => {
     console.error('[CVCamera] ❌ Web Worker Error:', error)
   }
+  */
+
+  // --- MOCK CV (Raycasting) ---
+  console.log('[CVCamera] ⏳ Initializing Mock Raycast Vision...')
+  _active = true
 }
 
 export function cvTick() {
-  if (!_worker) return
+  // if (!_worker) return
   
   // Always update the 60fps live feed for the user
   _updatePiPFeed()
@@ -135,7 +141,7 @@ export function cvTick() {
 }
 
 export async function captureAndAnalyze() {
-  if (!_active || !_worker) return []
+  if (!_active) return []
   return _runCV()
 }
 
@@ -226,6 +232,7 @@ async function _runCV() {
   const capturePos = _eyeCamera.position.clone()
   const captureOri = _eyeCamera.quaternion.clone()
 
+  /* --- REAL CV START ---
   // 4. Encode to JPEG base64 and Dispatch to Worker ────────────────────────
   // The _pixelCanvas holds a CLEAN image (no bounding boxes) updated by _updatePiPFeed
   const dataUrl = _pixelCanvas.toDataURL('image/jpeg', 0.8)
@@ -302,6 +309,168 @@ async function _runCV() {
 
   _lastBoxes = newBoxes
 
+  return results
+  --- REAL CV END --- */
+
+  // --- MOCK CV (Frustum Projection) ---
+  _eyeCamera.position.copy(capturePos)
+  _eyeCamera.quaternion.copy(captureOri)
+  _eyeCamera.updateMatrixWorld()
+
+  const frustum = new THREE.Frustum()
+  const projScreenMatrix = new THREE.Matrix4()
+  projScreenMatrix.multiplyMatrices(_eyeCamera.projectionMatrix, _eyeCamera.matrixWorldInverse)
+  frustum.setFromProjectionMatrix(projScreenMatrix)
+
+  const detected = new Map() // objId -> { name, minX, maxX, minY, maxY, distM, center }
+  const raycaster = new THREE.Raycaster()
+
+  const IGNORE_PREFIXES = ['robot', 'debug', 'sky', 'ground', 'floor', 'env', 'wall', 'boundary', 'room', 'plane']
+
+  scene.traverse((child) => {
+    if (!child.isMesh || !child.visible) return
+    
+    const lowerName = (child.name || '').toLowerCase()
+    if (child.userData?.isRobot || IGNORE_PREFIXES.some(p => lowerName.includes(p))) return
+
+    if (!frustum.intersectsObject(child)) return
+
+    // Ignore excessively large meshes (like the background environment or floor)
+    // Interactable objects are small; if it's > 5 meters, it's likely part of the scene geometry.
+    child.geometry.computeBoundingBox()
+    const box3 = new THREE.Box3().setFromObject(child)
+    const size = new THREE.Vector3()
+    box3.getSize(size)
+    if (size.x > 8 || size.y > 8 || size.z > 8) return
+
+    // Find the meaningful root object name
+    let rootObj = child
+    while(rootObj.parent && rootObj.parent.type !== 'Scene' && !rootObj.name.startsWith('object_')) {
+        if (rootObj.name.includes('box') || rootObj.name.includes('ball')) break
+        rootObj = rootObj.parent
+    }
+    
+    const rootName = rootObj.name || child.name
+
+    const center = new THREE.Vector3()
+    box3.getCenter(center)
+
+    // Occlusion check: raycast from camera to center
+    const dir = new THREE.Vector3().subVectors(center, _eyeCamera.position)
+    const distToCenter = dir.length()
+    dir.normalize()
+    raycaster.set(_eyeCamera.position, dir)
+    raycaster.far = distToCenter + 0.1 // Only cast as far as the object
+    const intersects = raycaster.intersectObjects(scene.children, true)
+    
+    let occluded = true
+    for (const hit of intersects) {
+       const hName = (hit.object.name || '').toLowerCase()
+       if (hit.object.userData?.isRobot || IGNORE_PREFIXES.some(p => hName.includes(p))) continue
+       
+       if (hit.object === child || hit.object.parent === rootObj) {
+           occluded = false
+       }
+       break
+    }
+
+    if (occluded) return
+
+    // Calculate 2D bounds by projecting the 8 corners of the 3D bounding box
+    const corners = [
+        new THREE.Vector3(box3.min.x, box3.min.y, box3.min.z),
+        new THREE.Vector3(box3.min.x, box3.min.y, box3.max.z),
+        new THREE.Vector3(box3.min.x, box3.max.y, box3.min.z),
+        new THREE.Vector3(box3.min.x, box3.max.y, box3.max.z),
+        new THREE.Vector3(box3.max.x, box3.min.y, box3.min.z),
+        new THREE.Vector3(box3.max.x, box3.min.y, box3.max.z),
+        new THREE.Vector3(box3.max.x, box3.max.y, box3.min.z),
+        new THREE.Vector3(box3.max.x, box3.max.y, box3.max.z),
+    ]
+
+    let minX = Infinity, minY = Infinity
+    let maxX = -Infinity, maxY = -Infinity
+
+    corners.forEach(corner => {
+        corner.project(_eyeCamera)
+        // Convert NDC back to pixel space
+        const px = (corner.x * 0.5 + 0.5) * CAPTURE_SIZE
+        const py = -(corner.y * 0.5 - 0.5) * CAPTURE_SIZE
+        minX = Math.min(minX, px)
+        maxX = Math.max(maxX, px)
+        minY = Math.min(minY, py)
+        maxY = Math.max(maxY, py)
+    })
+
+    if (!detected.has(rootName)) {
+        detected.set(rootName, { name: rootName, minX, maxX, minY, maxY, distM: distToCenter, center: center.clone() })
+    } else {
+        const entry = detected.get(rootName)
+        entry.minX = Math.min(entry.minX, minX)
+        entry.maxX = Math.max(entry.maxX, maxX)
+        entry.minY = Math.min(entry.minY, minY)
+        entry.maxY = Math.max(entry.maxY, maxY)
+        entry.distM = Math.min(entry.distM, distToCenter)
+        entry.center.add(center).multiplyScalar(0.5)
+    }
+  })
+
+  const results = []
+  const newBoxes = []
+
+  for (const [name, entry] of detected) {
+    // If the object's 2D bounds are completely outside the canvas, skip
+    if (entry.maxX < 0 || entry.minX > CAPTURE_SIZE || entry.maxY < 0 || entry.minY > CAPTURE_SIZE) continue
+
+    // Clamp the bounding box to the screen canvas limits
+    const padding = 6
+    const box = {
+      xmin: Math.max(0, entry.minX - padding),
+      xmax: Math.min(CAPTURE_SIZE, entry.maxX + padding),
+      ymin: Math.max(0, entry.minY - padding),
+      ymax: Math.min(CAPTURE_SIZE, entry.maxY + padding)
+    }
+
+    // Skip if box is way too small (e.g. noise or mostly off-screen)
+    if (box.xmax - box.xmin < 4 || box.ymax - box.ymin < 4) continue
+
+    const cx = Math.floor((box.xmin + box.xmax) / 2)
+    const cy = Math.floor((box.ymin + box.ymax) / 2)
+
+    // Determine basic label
+    let label = 'object'
+    const n = name.toLowerCase()
+    if (n.includes('box')) label = 'box'
+    else if (n.includes('ball')) label = 'sports ball'
+    else if (n.includes('goal')) label = 'stop sign'
+
+    // Sample color exactly from the 2D render context
+    let color = 'unknown'
+    try {
+        const pixel = _pixelCtx.getImageData(cx, cy, 1, 1).data
+        color = _rgbToColorName(pixel[0], pixel[1], pixel[2])
+    } catch(e) {}
+    
+    // Simulated confidence score based on distance (closer = more confident)
+    const score = Math.min(0.99, Math.max(0.55, 1.0 - (entry.distM / 12)))
+
+    newBoxes.push({ label, score, box, color })
+
+    const noise   = () => (Math.random() - 0.5) * 2 * CV_NOISE_M
+    const approxX = entry.center.x + noise()
+    const approxZ = entry.center.z + noise()
+    const approxY = entry.center.y
+
+    const objectId = _labelToId(label, color) || name
+    
+    updatePerceptionMemory(objectId, { x: approxX, y: approxY, z: approxZ }, score)
+
+    console.log(`[CVCamera] 👁 [Mock] "${color} ${label}" → ${objectId} ~${entry.distM.toFixed(1)}m (conf ${score.toFixed(2)})`)
+
+    results.push({ objectId, label, color, distanceCategory: 'medium', approxX, approxZ, confidence: score })
+  }
+
+  _lastBoxes = newBoxes
   return results
 }
 
