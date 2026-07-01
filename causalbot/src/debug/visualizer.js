@@ -175,8 +175,8 @@ export function updateLidarRays(origin, facingAngle, distances) {
     if (i < rays) {
       const angle = startAngle + angleStep * i
       const dist  = distances[i]
-      const ex    = sensorPos.x + (-Math.sin(angle)) * dist
-      const ez    = sensorPos.z + (-Math.cos(angle)) * dist
+      const ex    = sensorPos.x + Math.sin(angle) * dist
+      const ez    = sensorPos.z + Math.cos(angle) * dist
 
       posAttr.setXYZ(i * 2,     sensorPos.x, sensorPos.y, sensorPos.z)
       posAttr.setXYZ(i * 2 + 1, ex, sensorPos.y, ez)
@@ -229,25 +229,25 @@ export function updateFovCone(origin, facingAngle) {
   const fovRad = fov * (Math.PI / 180)
   const half = fovRad / 2
 
-  // Center ray
+  // Center ray  (+sin/+cos = robot forward, matches castVision)
   pts.push(
     sensorPos.x, sensorPos.y, sensorPos.z,
-    sensorPos.x + (-Math.sin(facingAngle)) * range, sensorPos.y, sensorPos.z + (-Math.cos(facingAngle)) * range
+    sensorPos.x + Math.sin(facingAngle) * range, sensorPos.y, sensorPos.z + Math.cos(facingAngle) * range
   )
 
   // Outer bounds & arc
   for (let i = 0; i <= segs; i++) {
     const a = (facingAngle - half) + (fovRad / segs) * i
-    const ex = sensorPos.x + (-Math.sin(a)) * range
-    const ez = sensorPos.z + (-Math.cos(a)) * range
+    const ex = sensorPos.x + Math.sin(a) * range
+    const ez = sensorPos.z + Math.cos(a) * range
     pts.push(sensorPos.x, sensorPos.y, sensorPos.z, ex, sensorPos.y, ez)
   }
   for (let i = 0; i < segs; i++) {
     const a1 = (facingAngle - half) + (fovRad / segs) * i
     const a2 = (facingAngle - half) + (fovRad / segs) * (i + 1)
     pts.push(
-      sensorPos.x + (-Math.sin(a1)) * range, sensorPos.y, sensorPos.z + (-Math.cos(a1)) * range,
-      sensorPos.x + (-Math.sin(a2)) * range, sensorPos.y, sensorPos.z + (-Math.cos(a2)) * range
+      sensorPos.x + Math.sin(a1) * range, sensorPos.y, sensorPos.z + Math.cos(a1) * range,
+      sensorPos.x + Math.sin(a2) * range, sensorPos.y, sensorPos.z + Math.cos(a2) * range
     )
   }
 

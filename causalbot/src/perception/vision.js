@@ -195,18 +195,31 @@ export function castLidar(robotPosition, facingAngle, scene) {
   
   for (let i = 0; i < rays; i++) {
     const angle = startAngle + angleStep * i
-    // LB-3: use −sin/−cos so rays point forward (same fix as castVision)
+    // LB-3: forward is +sin/+cos (robot faces (sin h, cos h)); must match
+    // castVision AND pathfinder.updateDynamicObstacles hit reconstruction,
+    // else dynamic obstacles land mirrored through the robot.
     const direction = new THREE.Vector3(
-      -Math.sin(angle),
+      Math.sin(angle),
       0,
-      -Math.cos(angle)
+      Math.cos(angle)
     ).normalize()
     
     _raycaster.set(sensorPos, direction)
     _raycaster.far = range
-    
+
+    // Take the first hit that isn't the robot's own body / floor / sky, so the
+    // LiDAR only reports real obstacles (walls, crates, balls). Without this the
+    // fan can latch onto the robot mesh and return a phantom near-hit — a false
+    // collision for RL death detection and a false blocked cell for A*.
     const intersects = _raycaster.intersectObjects(_sceneMeshes, false)
-    distances[i] = intersects.length > 0 ? intersects[0].distance : range
+    let d = range
+    for (const hit of intersects) {
+      const rootName = getRootObjectName(hit.object)
+      if (rootName && shouldIgnore(rootName)) continue
+      d = hit.distance
+      break
+    }
+    distances[i] = d
   }
   
   return distances

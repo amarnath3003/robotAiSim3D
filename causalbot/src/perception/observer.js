@@ -13,8 +13,8 @@ import { getManifest, getObservationSpace } from '../core/manifest.js'
 import { getKnownObjects, decayPerceptionMemory } from '../core/state.js'
 import { castVision, castLidar } from './vision.js'
 import { cvTick, initCVCamera } from './cv_camera.js'
-import { updateDynamicObstacles } from '../nav/pathfinder.js'
-import { updateLidarRays, updateFovCone } from '../debug/visualizer.js'
+import { updateDynamicObstacles, getActivePath } from '../nav/pathfinder.js'
+import { updateLidarRays, updateFovCone, setNavPath } from '../debug/visualizer.js'
 
 // ─── State ─────────────────────────────────────────────────────────────────────
 
@@ -109,6 +109,8 @@ export function updatePerception(dt, robot) {
   const yaw = getYawFromQuaternion(robot.orientation)
   updateLidarRays(robot.position, yaw, lidarDistances)
   updateFovCone(robot.position, yaw)
+  // Feed the live A* path to the debug path line (nothing else calls setNavPath)
+  setNavPath(getActivePath())
 
   // Build RL observation vector
   _lastObservation = buildRLObservation(robot, lidarDistances)
