@@ -147,10 +147,15 @@ export class EpisodicMemory {
       const ageDays = (now - ep.timestamp) / 86_400_000
       const recency = Math.exp(-ageDays / 3)
 
-      // Pure-recency bonus for very recent episodes
-      const pureBonus = ageDays < 1 ? 0.10 : 0
+      const base = overlap * weight * recency
 
-      return { ep, score: overlap * weight * recency + pureBonus }
+      // Pure-recency nudge for very recent episodes — but ONLY when the episode
+      // is actually relevant (overlap > 0). Applying it unconditionally made the
+      // score > 0 for EVERY episode from the last 24 h, so unrelated recent
+      // memories leaked past the score>0 filter and polluted the planning prompt.
+      const pureBonus = (overlap > 0 && ageDays < 1) ? 0.10 : 0
+
+      return { ep, score: base + pureBonus }
     })
 
     scored.sort((a, b) => b.score - a.score)
