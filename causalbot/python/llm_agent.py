@@ -23,7 +23,8 @@ from dotenv import load_dotenv
 from causalbot_env import CausalBotEnv
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
-API_KEY = os.getenv('VITE_NVIDIA_API_KEY')
+API_KEY = os.getenv('VITE_LLM_API_KEY') or os.getenv('VITE_NVIDIA_API_KEY')
+MODEL   = os.getenv('VITE_LLM_MODEL', 'gemini-2.5-flash')
 
 
 def call_llm(obs) -> list:
@@ -33,10 +34,12 @@ def call_llm(obs) -> list:
 
     obs[0] = distance to goal (m)
     obs[1] = relative angle to goal (rad, -π..π)
-    obs[2:13] = 11 lidar rays, 165° FOV, 0 = left edge, 10 = right edge
+    obs[2:13] = 11 lidar sectors covering 360° (downsampled from the 72-ray
+                scanner; each value = closest obstacle in that sector, clamped
+                to 5 m). Sector 0 = rear-left sweep start, middle ≈ ahead.
     """
     if not API_KEY:
-        print('ERROR: VITE_NVIDIA_API_KEY not set in .env')
+        print('ERROR: VITE_LLM_API_KEY not set in .env')
         return [0.0, 0.0, 0.0, 0.0]
 
     target_dist  = round(float(obs[0]), 2)
@@ -48,8 +51,8 @@ def call_llm(obs) -> list:
 Sensor readings:
 - Goal distance: {target_dist} m  (0 = at goal, positive = far away)
 - Goal angle: {target_angle} rad  (0 = straight ahead, negative = right, positive = left)
-- Lidar (11 rays, 165° FOV, left→right): {lidar_rays}
-  Index 0 = far left, 5 = straight ahead, 10 = far right.
+- Lidar (11 sectors spanning 360°, sweep left→right through ahead): {lidar_rays}
+  Index 5 ≈ straight ahead; low/high indices point behind the robot.
   Max range = 5.0 m. Value < 0.3 m = DANGER (imminent collision).
 
 Strategy:
@@ -65,14 +68,14 @@ Respond ONLY with valid JSON:
         'Content-Type': 'application/json',
     }
     payload = {
-        'model': 'google/gemma-4-31b-it',
+        'model': MODEL,
         'messages': [{'role': 'user', 'content': prompt}],
         'temperature': 0.1,
         'max_tokens': 64,
     }
 
     try:
-        url = 'https://integrate.api.nvidia.com/v1/chat/completions'
+        url = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
         response = requests.post(url, headers=headers, json=payload, timeout=10)
         response.raise_for_status()
 

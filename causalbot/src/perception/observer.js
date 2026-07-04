@@ -11,7 +11,7 @@
 
 import { getManifest, getObservationSpace } from '../core/manifest.js'
 import { getKnownObjects, decayPerceptionMemory } from '../core/state.js'
-import { castVision, castLidar } from './vision.js'
+import { castVision, castLidar, downsampleLidar } from './vision.js'
 import { cvTick, initCVCamera } from './cv_camera.js'
 import { updateDynamicObstacles, getActivePath } from '../nav/pathfinder.js'
 import { updateLidarRays, updateFovCone, setNavPath } from '../debug/visualizer.js'
@@ -158,12 +158,18 @@ export function buildRLObservationForBridge(robot, lidarDistances, goalPosition)
   const yaw = getYawFromQuaternion(robot.orientation)
   const targetAngle = Math.atan2(dx, dz) - yaw
   obs[1] = normalizeAngle(targetAngle)
-  
-  // Channels 2+: lidar distances
-  for (let i = 0; i < lidarDistances.length && (i + 2) < dim; i++) {
-    obs[i + 2] = lidarDistances[i]
+
+  // Channels 2+: lidar sectors. The physical sensor may run far more rays
+  // than the observation space defines — downsample to sector minimums and
+  // clamp to the channel's "high" so the RL contract stays stable.
+  const lidarChannel = obsSpace.channels?.find(c => c.name === 'lidar')
+  const sectors = Math.min(lidarChannel?.size ?? (dim - 2), dim - 2)
+  const clampMax = lidarChannel?.high ?? 5.0
+  const ds = downsampleLidar(lidarDistances, sectors, clampMax)
+  for (let i = 0; i < ds.length; i++) {
+    obs[i + 2] = ds[i]
   }
-  
+
   return obs
 }
 
@@ -190,12 +196,16 @@ function buildRLObservation(robot, lidarDistances) {
     const yaw = getYawFromQuaternion(robot.orientation)
     obs[1] = normalizeAngle(Math.atan2(dx, dz) - yaw)
   }
-  
-  // LiDAR data
-  for (let i = 0; i < lidarDistances.length && (i + 2) < dim; i++) {
-    obs[i + 2] = lidarDistances[i]
+
+  // LiDAR sectors (downsampled + clamped to the manifest observation space)
+  const lidarChannel = obsSpace?.channels?.find(c => c.name === 'lidar')
+  const sectors = Math.min(lidarChannel?.size ?? (dim - 2), dim - 2)
+  const clampMax = lidarChannel?.high ?? 5.0
+  const ds = downsampleLidar(lidarDistances, sectors, clampMax)
+  for (let i = 0; i < ds.length; i++) {
+    obs[i + 2] = ds[i]
   }
-  
+
   return obs
 }
 

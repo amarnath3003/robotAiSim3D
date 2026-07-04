@@ -119,12 +119,12 @@
     {
       "id": "lidar_360",
       "type": "lidar",
-      "position": { "x": 0, "y": 0.5, "z": 0 },
+      "position": { "x": 0, "y": -0.15, "z": 0 },
       "orientation": { "pitch": 0, "yaw": 0, "roll": 0 },
       "config": {
         "fov": 360,
-        "range": 5.0,
-        "rays": 11,
+        "range": 12.0,
+        "rays": 72,
         "updateRate": 60
       }
     },
@@ -135,8 +135,9 @@
       "orientation": { "pitch": 0, "yaw": 0, "roll": 0 },
       "config": {
         "fov": 179,
-        "range": 8.0,
-        "rays": 36,
+        "cvFov": 100,
+        "range": 9.0,
+        "rays": 48,
         "updateRate": 30
       }
     }

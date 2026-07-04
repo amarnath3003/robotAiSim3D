@@ -278,11 +278,12 @@ async function _getSceneGraph() {
  * @param {string} objectId
  * @param {{x: number, y: number, z: number}} position
  * @param {number} confidence - 0 to 1
+ * @param {Object} [meta] - Optional sensor metadata (colorName, label, radius…)
  */
-export function updatePerceptionMemory(objectId, position, confidence = 1.0) {
+export function updatePerceptionMemory(objectId, position, confidence = 1.0, meta = null) {
   const memory = _state.perception.memory
   const existing = memory.get(objectId)
-  
+
   if (existing) {
     // Weighted blend toward new observation
     const weight = confidence
@@ -291,12 +292,14 @@ export function updatePerceptionMemory(objectId, position, confidence = 1.0) {
     existing.position.z = existing.position.z * (1 - weight) + position.z * weight
     existing.confidence = Math.min(1.0, existing.confidence * 0.5 + confidence * 0.5)
     existing.lastSeen = Date.now()
+    if (meta) existing.meta = { ...(existing.meta || {}), ...meta }
   } else {
     memory.set(objectId, {
       position: { ...position },
       confidence,
       lastSeen: Date.now(),
       firstSeen: Date.now(),
+      meta: meta ? { ...meta } : {},
     })
   }
 
@@ -334,19 +337,30 @@ export function decayPerceptionMemory(decayRate = 0.05, dt = 1/60) {
 export function getRememberedObject(objectId) {
   const entry = _state.perception.memory.get(objectId)
   if (!entry || entry.confidence <= 0.1) return null
-  return { position: entry.position, confidence: entry.confidence }
+  return {
+    position: entry.position,
+    confidence: entry.confidence,
+    lastSeen: entry.lastSeen,
+    meta: entry.meta || {},
+  }
 }
 
 /**
  * Get all remembered objects above a confidence threshold.
  * @param {number} minConfidence
- * @returns {Array<{id: string, position: {x,y,z}, confidence: number}>}
+ * @returns {Array<{id: string, position: {x,y,z}, confidence: number, lastSeen: number, meta: Object}>}
  */
 export function getKnownObjects(minConfidence = 0.2) {
   const results = []
   for (const [id, entry] of _state.perception.memory) {
     if (entry.confidence >= minConfidence) {
-      results.push({ id, position: entry.position, confidence: entry.confidence })
+      results.push({
+        id,
+        position: entry.position,
+        confidence: entry.confidence,
+        lastSeen: entry.lastSeen,
+        meta: entry.meta || {},
+      })
     }
   }
   return results

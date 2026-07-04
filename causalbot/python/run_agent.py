@@ -26,9 +26,9 @@ from dotenv import load_dotenv
 
 # Load .env from the causalbot directory (one level up from python/)
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
-API_KEY = os.getenv('VITE_NVIDIA_API_KEY')
-MODEL   = os.getenv('VITE_NVIDIA_MODEL', 'google/gemma-4-31b-it')
-API_URL = 'https://integrate.api.nvidia.com/v1/chat/completions'
+API_KEY = os.getenv('VITE_LLM_API_KEY') or os.getenv('VITE_NVIDIA_API_KEY')
+MODEL   = os.getenv('VITE_LLM_MODEL', 'gemini-2.5-flash')
+API_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
 
 
 # ─── World objects + named locations ──────────────────────────────────────────

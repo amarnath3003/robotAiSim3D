@@ -25,7 +25,7 @@ import { getState, setState, subscribe } from '../core/state.js'
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
-const MAX_LIDAR_RAYS  = 64    // Pre-allocated vertex buffer size
+const MAX_LIDAR_RAYS  = 128   // Pre-allocated vertex buffer size (72-ray LiDAR fits)
 const MAX_PATH_POINTS = 128   // Max waypoints to visualise
 
 // ─── Module State ──────────────────────────────────────────────────────────────

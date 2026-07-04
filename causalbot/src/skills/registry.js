@@ -272,37 +272,120 @@ class SkillRegistry {
     // Navigation skills (require locomotion)
     this._register({
       name: 'navigate_to',
-      description: 'Navigate to a perceived object. The object must be in perception memory (run scan_for first if not).',
+      description: 'Go to any object by name or description (e.g. "green ball", "box_A"). Fully autonomous: if the object has not been seen yet it automatically rotate-scans and explores vantage points to find it, then drives there avoiding all obstacles (LiDAR + A*), stops at a safe distance and faces the object. Re-approaches if the object moved.',
       requires: ['locomotion:ground'],
-      args: { target: 'object ID or color description (e.g. "ball_red", "red ball", "box_A")' },
+      args: { target: 'object ID or description (e.g. "ball_red", "green ball", "box_A")' },
       execute: async (ctx) => {
         const target = ctx.args?.target
         if (!target) throw new Error('navigate_to requires a target')
 
-        // ONLY use perception memory — no direct physics lookup
-        const match = ctx.findPerceivedObject?.(target)
+        let match = await ctx.acquireObject(target)
         if (!match?.position) {
           throw new Error(
-            `"${target}" not in perception memory. Use scan_for(target:"${target}") first.`
+            `Could not find "${target}" after scanning and exploring the arena — it may not exist here.`
           )
         }
 
-        ctx.setStatus(`Navigating to ${match.id} (approx pos: ${match.position.x.toFixed(1)}, ${match.position.z.toFixed(1)})...`)
-        const currentPos = ctx.getPos()
-        await ctx.navigateTo(match.position.x, currentPos.y, match.position.z)
+        // Chase loop: physics objects can roll away while we approach
+        for (let round = 0; round < 3; round++) {
+          const radius   = match.meta?.radius ?? 0.45
+          const approach = Math.min(Math.max(radius + 0.65, 0.9), 1.7)
+
+          ctx.setStatus(`Heading to ${match.id} (~${match.position.x.toFixed(1)}, ${match.position.z.toFixed(1)})...`)
+          await ctx.navigateTo(match.position.x, 0, match.position.z, {
+            approach,
+            face: { x: match.position.x, z: match.position.z },
+          })
+
+          // Verify with a fresh CV capture — the object may have moved
+          await ctx.captureCV?.()
+          await ctx.wait(150)
+          const fresh = ctx.findPerceivedObject(target) || match
+          const pos = ctx.getPos()
+          const d = Math.hypot(fresh.position.x - pos.x, fresh.position.z - pos.z)
+
+          if (d <= approach + 0.6) {
+            ctx.setStatus(`Reached ${fresh.id} — ${d.toFixed(1)} m away, facing it`)
+            return
+          }
+          match = fresh
+        }
+        throw new Error(`"${target}" kept moving — could not close the distance.`)
       },
     })
-    
+
     this._register({
       name: 'move_to_position',
-      description: 'Move to specific x,z coordinates.',
+      description: 'Move to specific x,z world coordinates with full obstacle avoidance. If the exact point is inside an obstacle, stops at the nearest reachable spot.',
       requires: ['locomotion:ground'],
       args: { x: 'number', z: 'number' },
       execute: async (ctx) => {
         const x = parseFloat(ctx.args?.x) || 0
         const z = parseFloat(ctx.args?.z) || 0
         const pos = ctx.getPos()
-        await ctx.navigateTo(x, pos.y, z)
+        const res = await ctx.navigateTo(x, pos.y, z)
+        ctx.setStatus(`Arrived (${res.finalDist.toFixed(2)} m from requested point)`)
+      },
+    })
+
+    this._register({
+      name: 'follow_path',
+      description: 'Drive along a list of waypoints IN ORDER with automatic obstacle avoidance — blocked segments are detoured around, then the route resumes. Use for ANY geometric movement: shapes (triangle, square, circle, star, letters…), patrol routes, custom trajectories. COMPUTE the waypoints yourself. frame "robot": each point is {x, y} = metres right(+x)/left(−x) and forward(+y) from the robot\'s CURRENT pose. frame "world": absolute {x, z} coordinates. closed:true appends the start point to close the loop.',
+      requires: ['locomotion:ground'],
+      args: {
+        points: 'array of waypoints, e.g. [{"x":0,"y":2},{"x":-1.7,"y":1}] (robot frame) or [{"x":3,"z":-2},...] (world frame)',
+        frame: '"robot" (default) or "world"',
+        closed: 'true to return to the start point at the end (closed shapes)',
+        speed: 'optional m/s',
+      },
+      execute: async (ctx) => {
+        let pts = ctx.args?.points
+        if (typeof pts === 'string') {
+          try { pts = JSON.parse(pts) } catch { /* fall through to validation */ }
+        }
+        if (!Array.isArray(pts) || pts.length === 0) {
+          throw new Error('follow_path requires a non-empty "points" array')
+        }
+
+        const frame   = String(ctx.args?.frame || 'robot').toLowerCase()
+        const start   = ctx.getPos()
+        const heading = ctx.getHeading()
+        const sinH = Math.sin(heading)
+        const cosH = Math.cos(heading)
+
+        const world = []
+        for (const p of pts) {
+          const isArr = Array.isArray(p)
+          if (frame === 'world') {
+            world.push({
+              x: isArr ? +p[0] : +(p.x ?? 0),
+              z: isArr ? +p[1] : +(p.z ?? p.y ?? 0),
+            })
+          } else {
+            // Robot frame: x = right(+)/left(−), y = forward.
+            // forward = (sin h, cos h); right = (−cos h, sin h)
+            const rx = isArr ? +p[0] : +(p.x ?? 0)
+            const fy = isArr ? +p[1] : +(p.y ?? p.forward ?? 0)
+            world.push({
+              x: start.x + sinH * fy - cosH * rx,
+              z: start.z + cosH * fy + sinH * rx,
+            })
+          }
+        }
+
+        const closed = ctx.args?.closed === true || ctx.args?.closed === 'true'
+        if (closed) world.push({ x: start.x, z: start.z })
+
+        ctx.setStatus(`Following ${world.length}-point path...`)
+        const speed = parseFloat(ctx.args?.speed)
+        const res = await ctx.navigatePath(world, isNaN(speed) ? {} : { speed })
+
+        if (res.aborted) return
+        if (res.reached === 0) throw new Error('No waypoint on the path was reachable')
+        ctx.setStatus(
+          `Path complete — ${res.reached}/${res.total} waypoints reached` +
+          (res.skipped ? ` (${res.skipped} blocked, detoured past)` : '')
+        )
       },
     })
     
@@ -363,35 +446,44 @@ class SkillRegistry {
     // Manipulation
     this._register({
       name: 'pick_up',
-      description: 'Pick up an object. Object must be in perception memory (run scan_for first if not).',
+      description: 'Pick up an object. Autonomous: finds the object (scanning/exploring if needed), drives to it avoiding obstacles, and grabs it.',
       requires: ['manipulation:grasp'],
       args: { target: 'object id or color description (e.g. "ball_red", "red ball")' },
       execute: async (ctx) => {
         const target = ctx.args?.target
         if (!target) throw new Error('pick_up requires a target')
 
-        // ONLY use perception memory
-        const match = ctx.findPerceivedObject?.(target)
+        let match = await ctx.acquireObject(target)
         if (!match?.position) {
-          throw new Error(
-            `"${target}" not in perception memory. Use scan_for(target:"${target}") first.`
-          )
+          throw new Error(`Could not find "${target}" after scanning and exploring.`)
         }
 
-        ctx.setStatus(`Navigating to pick up ${match.id}...`)
-        const currentPos = ctx.getPos()
-        await ctx.navigateTo(match.position.x, currentPos.y, match.position.z)
+        // Approach close enough to grab (tighter than navigate_to's standoff)
+        for (let round = 0; round < 2; round++) {
+          const radius = match.meta?.radius ?? 0.4
+          ctx.setStatus(`Navigating to pick up ${match.id}...`)
+          await ctx.navigateTo(match.position.x, 0, match.position.z, {
+            approach: Math.max(radius + 0.45, 0.7),
+            face: { x: match.position.x, z: match.position.z },
+          })
 
-        // Do a quick CV capture at close range to confirm current position (ball may have moved)
-        ctx.setStatus(`Scanning close range for ${match.id}...`)
-        await ctx.captureCV?.()
-        await ctx.wait(200)
+          // Confirm at close range — the object may have rolled away
+          ctx.setStatus(`Scanning close range for ${match.id}...`)
+          await ctx.captureCV?.()
+          await ctx.wait(200)
+          const fresh = ctx.findPerceivedObject(target) || match
+          const pos = ctx.getPos()
+          if (Math.hypot(fresh.position.x - pos.x, fresh.position.z - pos.z) < 1.6) {
+            match = fresh
+            break
+          }
+          match = fresh
+        }
 
         // Extend arm for grab
         ctx.setJointGroup('left_arm', 90)
         await ctx.wait(400)
 
-        // Use object ID from perception memory, or fuzzy-match from env
         const grabId = match.id
         const success = ctx.grab(grabId)
         if (!success) {
@@ -459,10 +551,10 @@ class SkillRegistry {
 
         const distance = parseFloat(ctx.args?.distance) || 1.0
 
-        // Perception-only lookup
-        const match = ctx.findPerceivedObject?.(target)
+        // Perception lookup with automatic search fallback
+        const match = await ctx.acquireObject(target)
         if (!match?.position) {
-          throw new Error(`"${target}" not in perception memory. Use scan_for(target:"${target}") first.`)
+          throw new Error(`Could not find "${target}" after scanning and exploring.`)
         }
         const targetPos = match.position
 
@@ -513,10 +605,10 @@ class SkillRegistry {
         const target = ctx.args?.target
         if (!target) throw new Error('push requires a target')
 
-        // Perception-only lookup
-        const match = ctx.findPerceivedObject?.(target)
+        // Perception lookup with automatic search fallback
+        const match = await ctx.acquireObject(target)
         if (!match?.position) {
-          throw new Error(`"${target}" not in perception memory. Use scan_for(target:"${target}") first.`)
+          throw new Error(`Could not find "${target}" after scanning and exploring.`)
         }
 
         ctx.setStatus(`Moving to push ${match.id}...`)
@@ -566,32 +658,13 @@ class SkillRegistry {
         const target = ctx.args?.target || 'unknown'
         ctx.setStatus(`Scanning for "${target}"...`)
 
-        const speed    = 1.0
-        const fullCircle = (2 * Math.PI / speed) * 1000  // ms for 360°
-        const stepMs   = 400   // rotate in 400ms increments
-        const steps    = Math.ceil(fullCircle / stepMs)
-
-        for (let i = 0; i < steps; i++) {
-          ctx.rotate(speed)
-          await ctx.wait(stepMs)
-          ctx.stop()
-          await ctx.wait(100)   // brief pause so CV can process the frame
-
-          // Trigger CV capture at each step for real visual detection
-          await ctx.captureCV?.()
-          await ctx.wait(200)   // wait for CV API response to arrive
-
-          // Check perception memory after each CV capture
-          const match = ctx.findPerceivedObject?.(target)
-          if (match) {
-            ctx.setStatus(`Found "${match.id}" at approx (${match.position.x.toFixed(1)}, ${match.position.z.toFixed(1)})`)
-            ctx.stop()
-            return
-          }
+        const match = await ctx.spinScan(target)
+        if (match && !Array.isArray(match)) {
+          ctx.setStatus(`Found "${match.id}" at approx (${match.position.x.toFixed(1)}, ${match.position.z.toFixed(1)})`)
+          return
         }
 
-        ctx.stop()
-        ctx.setStatus(`"${target}" not found after full scan — try explore() and scan again`)
+        ctx.setStatus(`"${target}" not found after full scan — try move_and_look() or navigate_to (it auto-explores)`)
       },
     })
     
@@ -691,7 +764,9 @@ class SkillRegistry {
         
         for (const point of patrolPoints) {
           ctx.setStatus(`Patrolling to (${point.x.toFixed(1)}, ${point.z.toFixed(1)})`)
-          await ctx.navigateTo(point.x, pos.y, point.z)
+          try {
+            await ctx.navigateTo(point.x, pos.y, point.z)
+          } catch { /* leg blocked — continue patrol at the next point */ }
           await ctx.wait(500)
         }
         ctx.setStatus('Patrol complete')
@@ -731,13 +806,17 @@ class SkillRegistry {
             const tx = origin.x + col * step
             const tz = origin.z + row * step
             ctx.setStatus(`Survey point ${++visited}/8 (${tx.toFixed(1)}, ${tz.toFixed(1)})`)
-            await ctx.navigateTo(tx, origin.y, tz)
+            try {
+              await ctx.navigateTo(tx, origin.y, tz)
+            } catch { /* point unreachable — skip it */ }
             await ctx.wait(300)   // brief pause for sensors to catch up
           }
         }
 
         // Return to survey start
-        await ctx.navigateTo(origin.x, origin.y, origin.z)
+        try {
+          await ctx.navigateTo(origin.x, origin.y, origin.z)
+        } catch { /* start blocked — stay put */ }
         ctx.setStatus('Survey complete')
       },
     })
@@ -761,7 +840,9 @@ class SkillRegistry {
           const tz    = pos.z + Math.sin(angle) * dist
 
           ctx.setStatus(`Explore step ${i + 1}/${steps}`)
-          await ctx.navigateTo(tx, pos.y, tz)
+          try {
+            await ctx.navigateTo(tx, pos.y, tz)
+          } catch { /* random point unreachable — pick another next loop */ }
           await ctx.wait(400)
         }
 
@@ -778,23 +859,21 @@ class SkillRegistry {
         const target = ctx.args?.target || ''
         ctx.setStatus(`Looking for "${target}"...`)
 
-        // Reduced from 1.2 — slower scan improves sensor coverage at 30Hz vision
-        const speed = 1.0
-        const duration = Math.ceil((2 * Math.PI / speed) * 1000 * 1.05)
-        ctx.rotate(speed)
-        await ctx.wait(duration)
-        ctx.stop()
+        const match = target
+          ? await ctx.acquireObject(target)
+          : (await ctx.spinScan(), ctx.getPerceivedObjects?.()[0])
 
-        const match = target ? ctx.findPerceivedObject?.(target) : ctx.getPerceivedObjects?.()[0]
-
-        if (!match) {
-          ctx.setStatus(`"${target}" not found — try scanning first`)
-          throw new Error(`Target "${target}" not found after scanning`)
+        if (!match?.position) {
+          ctx.setStatus(`"${target}" not found`)
+          throw new Error(`Target "${target}" not found after scanning and exploring`)
         }
 
         ctx.setStatus(`Found "${match.id}" — navigating...`)
-        const pos = ctx.getPos()
-        await ctx.navigateTo(match.position.x, pos.y, match.position.z)
+        const radius = match.meta?.radius ?? 0.45
+        await ctx.navigateTo(match.position.x, 0, match.position.z, {
+          approach: Math.max(radius + 0.65, 0.9),
+          face: { x: match.position.x, z: match.position.z },
+        })
         ctx.setStatus(`Reached "${match.id}"`)
       },
     })

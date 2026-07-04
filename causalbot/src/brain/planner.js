@@ -20,7 +20,7 @@ import { checkFeasibility } from './feasibility.js'
 import { getRobot, setRobotStatus, logExecution, getKnownObjects, getRecentHistory } from '../core/state.js'
 // XM-4: removed dead manifest imports (getManifest, getCapabilities, hasCapability)
 //        — manifest decisions are delegated to feasibility.js and adapter.js
-import { navigateTo as pathNavigateTo, abortNavigation } from '../nav/pathfinder.js'
+import { navigateTo as pathNavigateTo, navigatePath as pathNavigatePath, abortNavigation } from '../nav/pathfinder.js'
 import { BTRunner, Blackboard, planToBehaviorTree } from './behavior_tree.js'
 import { reflect } from './reflection.js'
 import {
@@ -381,31 +381,47 @@ async function _replanAfterFailure(instruction, failReason, remainingSteps, skil
  * Exported so background_agent.js and main.js can build contexts directly.
  */
 export function buildExecutionContext(robot, args, skillRegistry) {
-  return {
+  const ctx = {
     // ─── Robot Control ────────────────────────────────────────────
     getPos: () => ({
       x: robot.position.x,
       y: robot.position.y,
       z: robot.position.z,
     }),
-    
+
+    // Heading in radians: 0 = facing +Z, forward vector = (sin h, 0, cos h)
+    getHeading: () => {
+      const q = robot.orientation
+      return Math.atan2(2 * (q.w * q.y + q.x * q.z), 1 - 2 * (q.y * q.y + q.z * q.z))
+    },
+
     setPos: (x, y, z) => {
       robot.position.set(x, y, z)
       if (robot.physicsBody) {
         robot.physicsBody.setNextKinematicTranslation({ x, y, z })
       }
     },
-    
+
     moveForward: (speed) => robot.moveForward(speed),
     rotate: (angularSpeed) => robot.rotate(angularSpeed),
     stop: () => robot.stop(),
-    
-    navigateTo: async (x, y, z, speed) => {
-      // Real A* navigation — pathfinder handles obstacle avoidance
+
+    navigateTo: async (x, y, z, opts) => {
+      // Real A* navigation — pathfinder handles obstacle avoidance, replanning
+      // and reactive LiDAR steering. opts: number (speed) or
+      // {speed, approach, arrive, face:{x,z}, timeout}. Throws when unreachable.
       _onExecuting?.({ description: `Navigating to (${x.toFixed(1)}, ${z.toFixed(1)})` })
-      await pathNavigateTo(robot, x, z, speed)
+      return await pathNavigateTo(robot, x, z, opts)
     },
-    
+
+    // Follow an ordered list of world waypoints (any geometry — shapes,
+    // patrol routes, LLM-computed trajectories). Obstacles are detoured
+    // around automatically; unreachable vertices are skipped and counted.
+    navigatePath: async (points, opts) => {
+      _onExecuting?.({ description: `Following ${points.length}-point path` })
+      return await pathNavigatePath(robot, points, opts)
+    },
+
     // ─── Joint Control ───────────────────────────────────────────
     setJoint: (jointName, angleDeg) => robot.setJointTarget(jointName, angleDeg),
     setJointGroup: (groupName, angleDeg) => robot.setGroupTarget(groupName, angleDeg),
@@ -446,22 +462,107 @@ export function buildExecutionContext(robot, args, skillRegistry) {
     getKnownObjects:     () => getKnownObjects(0.2),
     getPerceivedObjects: () => getKnownObjects(0.1),
 
-    // Fuzzy-match an object from perception memory by name or color description
+    // Scored fuzzy match against perception memory: matches ids ("ball_green"),
+    // colour metadata ("green"), labels ("sports ball") and free descriptions
+    // ("the big green ball"). Highest-scoring object wins; ties break toward
+    // higher confidence.
     findPerceivedObject: (nameOrDesc) => {
-      const lower = nameOrDesc.toLowerCase()
-      const known = getKnownObjects(0.1)
-      // Try exact id match first
-      let match = known.find(o => o.id.toLowerCase() === lower)
-      if (match) return match
-      // Try id contains
-      match = known.find(o => o.id.toLowerCase().includes(lower) || lower.includes(o.id.toLowerCase()))
-      if (match) return match
-      // Try color-based fuzzy (e.g. "red" matches "ball_red")
-      match = known.find(o => {
-        const parts = o.id.toLowerCase().split('_')
-        return parts.some(p => lower.includes(p) || p.includes(lower))
-      })
-      return match || null
+      const desc = String(nameOrDesc || '').toLowerCase().trim()
+      if (!desc) return null
+      const known = getKnownObjects(0.08)
+      if (!known.length) return null
+
+      const dWords = desc.split(/[^a-z0-9]+/).filter(w => w.length > 1 || /\d/.test(w))
+      let best = null
+      let bestScore = 0
+
+      for (const o of known) {
+        const idL = o.id.toLowerCase()
+        const oWords = new Set([
+          ...idL.split(/[^a-z0-9]+/),
+          ...String(o.meta?.colorName || '').toLowerCase().split(/[^a-z0-9]+/),
+          ...String(o.meta?.label || '').toLowerCase().split(/[^a-z0-9]+/),
+        ].filter(Boolean))
+
+        let s = 0
+        if (idL === desc) s += 6
+        for (const w of dWords) {
+          if (oWords.has(w)) s += 2
+          else {
+            for (const ow of oWords) {
+              if (ow.length > 2 && (ow.includes(w) || w.includes(ow))) { s += 1; break }
+            }
+          }
+        }
+        s += Math.min(o.confidence, 1) * 0.8
+
+        if (s > bestScore) { bestScore = s; best = o }
+      }
+
+      return bestScore >= 2 ? best : null
+    },
+
+    // Rotate in place through a full circle, capturing CV frames, until the
+    // target is perceived (or the sweep completes). Returns the match or null.
+    // With no target, completes the sweep and returns everything known.
+    spinScan: async (target = null) => {
+      const speed = 1.0
+      const stepMs = 400
+      const steps = Math.ceil(((2 * Math.PI) / speed) * 1000 / stepMs)
+
+      for (let i = 0; i < steps; i++) {
+        if (_abortRequested) break
+        robot.rotate(speed)
+        await ctx.wait(stepMs)
+        robot.stop()
+        await ctx.wait(90)
+        await ctx.captureCV()
+        await ctx.wait(160)
+
+        if (target) {
+          const m = ctx.findPerceivedObject(target)
+          if (m) { robot.stop(); return m }
+        }
+      }
+      robot.stop()
+      return target ? ctx.findPerceivedObject(target) : ctx.getPerceivedObjects()
+    },
+
+    // Actively acquire an object: perception memory → in-place spin scan →
+    // drive to spread-out vantage points and scan from each. This is what
+    // makes "go to X" work even when X has never been seen.
+    acquireObject: async (target, { fullSearch = true } = {}) => {
+      let m = ctx.findPerceivedObject(target)
+      if (m) return m
+
+      ctx.setStatus(`Searching for "${target}" — scanning...`)
+      m = await ctx.spinScan(target)
+      if (m && !Array.isArray(m)) return m
+      if (!fullSearch) return null
+
+      // Vantage exploration: visit well-spread points across the arena,
+      // nearest first, scanning at each stop.
+      const pos = ctx.getPos()
+      const vantages = [
+        { x: 0, z: 0 }, { x: 7, z: 7 }, { x: -7, z: 7 },
+        { x: 7, z: -7 }, { x: -7, z: -7 }, { x: 0, z: 10 }, { x: 10, z: 0 },
+      ]
+        .map(v => ({ ...v, d: Math.hypot(v.x - pos.x, v.z - pos.z) }))
+        .filter(v => v.d > 2.5)
+        .sort((a, b) => a.d - b.d)
+        .slice(0, 5)
+
+      for (const v of vantages) {
+        if (_abortRequested) break
+        ctx.setStatus(`Searching for "${target}" — moving to vantage (${v.x}, ${v.z})...`)
+        try {
+          await ctx.navigateTo(v.x, 0, v.z, { arrive: 0.8 })
+        } catch { continue }   // vantage unreachable — try the next one
+
+        m = await ctx.spinScan(target)
+        if (m && !Array.isArray(m)) return m
+      }
+      return null
     },
 
     // Trigger an immediate CV capture (for scan skills that need live results)
@@ -471,25 +572,27 @@ export function buildExecutionContext(robot, args, skillRegistry) {
         return await captureAndAnalyze()
       } catch { return [] }
     },
-    
+
     checkFeasibility: (action, params) => {
       return robot.checkFeasibility(action, params)
     },
-    
+
     // ─── Utility ─────────────────────────────────────────────────
     wait: (ms) => new Promise(r => setTimeout(r, ms)),
-    
+
     setStatus: (text) => {
       _onExecuting?.({ description: text })
     },
-    
+
     // ─── Arguments ───────────────────────────────────────────────
     args,
-    
+
     // ─── Robot reference (for advanced skills) ───────────────────
     robot,
     manifest: robot.manifest,
   }
+
+  return ctx
 }
 
 // ─── Skill Synthesis ───────────────────────────────────────────────────────────

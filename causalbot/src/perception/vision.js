@@ -15,6 +15,7 @@
 import * as THREE from 'three'
 import { getManifest, getSensor } from '../core/manifest.js'
 import { updatePerceptionMemory } from '../core/state.js'
+import { getWorld, getRapier } from '../physics/world.js'
 
 // ─── Internal State ────────────────────────────────────────────────────────────
 
@@ -154,12 +155,12 @@ export function castVision(robotPosition, facingAngle, scene) {
       confidence,
     })
 
-    // Update perception memory
+    // Update perception memory (carry colour metadata when the mesh has it)
     updatePerceptionMemory(name, {
       x: center.x,
       y: center.y,
       z: center.z,
-    }, confidence)
+    }, confidence, colorName ? { colorName } : null)
   }
 
   return results
@@ -168,49 +169,74 @@ export function castVision(robotPosition, facingAngle, scene) {
 /**
  * Cast LiDAR rays and return raw distance array.
  * Uses the lidar sensor config from manifest.
- * This is what the RL agent receives.
- * 
+ *
+ * Primary implementation raycasts against the PHYSICS world (Rapier):
+ * - fast (broadphase-accelerated), scales to dense ray fans at 60 Hz
+ * - measures the exact collision geometry the robot can actually hit
+ * - immune to stale mesh caches when the scene is rebuilt (RL episodes)
+ * - the robot's own capsule and any carried object are excluded (both are
+ *   kinematic bodies; everything else in the world is fixed or dynamic)
+ * Falls back to Three.js raycasting if the physics world isn't ready.
+ *
  * @param {THREE.Vector3} robotPosition
  * @param {number} facingAngle
  * @param {THREE.Scene} scene
  * @returns {Float32Array} Array of distances (length = sensor ray count)
  */
 export function castLidar(robotPosition, facingAngle, scene) {
-  if (!_cacheValid) rebuildMeshCache(scene)
-  
   const config = getLidarConfig()
   const { fov, range, rays, position: sensorOffset } = config
-  
-  const sensorPos = new THREE.Vector3(
-    robotPosition.x + (sensorOffset?.x || 0),
-    robotPosition.y + (sensorOffset?.y || 0.5),
-    robotPosition.z + (sensorOffset?.z || 0)
-  )
-  
+
+  const sx = robotPosition.x + (sensorOffset?.x || 0)
+  const sy = robotPosition.y + (sensorOffset?.y ?? 0.5)
+  const sz = robotPosition.z + (sensorOffset?.z || 0)
+
   const distances = new Float32Array(rays)
   const halfFov = (fov / 2) * (Math.PI / 180)
   const angleStep = (fov * (Math.PI / 180)) / Math.max(rays - 1, 1)
   // EC-4: single-ray LiDAR should point straight ahead
   const startAngle = rays > 1 ? facingAngle - halfFov : facingAngle
-  
+
+  const world = getWorld()
+  const RAPIER = getRapier()
+
+  if (world && RAPIER) {
+    // ── Physics-based LiDAR ────────────────────────────────────────────────
+    if (!_lidarRay) _lidarRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 })
+    _lidarRay.origin.x = sx
+    _lidarRay.origin.y = sy
+    _lidarRay.origin.z = sz
+
+    for (let i = 0; i < rays; i++) {
+      const angle = startAngle + angleStep * i
+      // LB-3: forward is +sin/+cos — must match castVision AND
+      // pathfinder.updateDynamicObstacles hit reconstruction.
+      _lidarRay.dir.x = Math.sin(angle)
+      _lidarRay.dir.y = 0
+      _lidarRay.dir.z = Math.cos(angle)
+
+      const hit = world.castRay(
+        _lidarRay, range, true,
+        undefined, undefined, undefined, undefined,
+        _lidarFilterPredicate
+      )
+      const toi = hit ? (hit.timeOfImpact ?? hit.toi ?? range) : range
+      distances[i] = Math.min(toi, range)
+    }
+    return distances
+  }
+
+  // ── Fallback: Three.js raycaster (pre-physics boot only) ─────────────────
+  if (!_cacheValid) rebuildMeshCache(scene)
+  const sensorPos = new THREE.Vector3(sx, sy, sz)
+
   for (let i = 0; i < rays; i++) {
     const angle = startAngle + angleStep * i
-    // LB-3: forward is +sin/+cos (robot faces (sin h, cos h)); must match
-    // castVision AND pathfinder.updateDynamicObstacles hit reconstruction,
-    // else dynamic obstacles land mirrored through the robot.
-    const direction = new THREE.Vector3(
-      Math.sin(angle),
-      0,
-      Math.cos(angle)
-    ).normalize()
-    
+    const direction = new THREE.Vector3(Math.sin(angle), 0, Math.cos(angle)).normalize()
+
     _raycaster.set(sensorPos, direction)
     _raycaster.far = range
 
-    // Take the first hit that isn't the robot's own body / floor / sky, so the
-    // LiDAR only reports real obstacles (walls, crates, balls). Without this the
-    // fan can latch onto the robot mesh and return a phantom near-hit — a false
-    // collision for RL death detection and a false blocked cell for A*.
     const intersects = _raycaster.intersectObjects(_sceneMeshes, false)
     let d = range
     for (const hit of intersects) {
@@ -221,8 +247,55 @@ export function castLidar(robotPosition, facingAngle, scene) {
     }
     distances[i] = d
   }
-  
+
   return distances
+}
+
+// Reusable Rapier ray (allocated once)
+let _lidarRay = null
+
+// Exclude kinematic bodies from LiDAR: the robot itself is kinematic, and any
+// object the robot carries is switched to kinematic while held — both would
+// otherwise read as phantom point-blank obstacles.
+function _lidarFilterPredicate(collider) {
+  const body = collider.parent && collider.parent()
+  if (body && typeof body.isKinematic === 'function' && body.isKinematic()) return false
+  return true
+}
+
+/**
+ * Downsample a dense LiDAR scan to N sector readings (minimum per sector —
+ * conservative: a sector reports the closest obstacle inside it).
+ * Used to keep the RL observation vector at its manifest-defined size while
+ * the actual sensor runs at much higher resolution.
+ *
+ * @param {Float32Array} distances  Full-resolution scan
+ * @param {number} outCount         Target number of readings
+ * @param {number} [clampMax]       Clamp output values (RL obs space "high")
+ * @returns {Float32Array}
+ */
+export function downsampleLidar(distances, outCount, clampMax = Infinity) {
+  const out = new Float32Array(outCount)
+  if (!distances || distances.length === 0) return out
+
+  const n = distances.length
+  if (n <= outCount) {
+    for (let i = 0; i < outCount; i++) {
+      out[i] = Math.min(distances[Math.min(i, n - 1)], clampMax)
+    }
+    return out
+  }
+
+  for (let j = 0; j < outCount; j++) {
+    const a = Math.floor((j * n) / outCount)
+    const b = Math.max(a + 1, Math.floor(((j + 1) * n) / outCount))
+    let m = Infinity
+    for (let i = a; i < b && i < n; i++) {
+      if (distances[i] < m) m = distances[i]
+    }
+    out[j] = Math.min(m, clampMax)
+  }
+  return out
 }
 
 // ─── Configuration Helpers ─────────────────────────────────────────────────────

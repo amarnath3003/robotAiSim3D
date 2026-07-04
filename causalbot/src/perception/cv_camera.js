@@ -36,6 +36,8 @@ let _pipCtx       = null    // CanvasRenderingContext2D
 let _lastCVTime   = 0
 let _active       = false   // true when model is loaded in worker
 let _cvBusy       = false   // prevent concurrent calls
+let _eyeFovRad    = 100 * (Math.PI / 180)  // eye camera FOV (radians) — for size estimation
+let _camRange     = 8.0                    // detection range gate (metres)
 
 let _worker       = null    // Web Worker for background inference
 let _pendingTasks = new Map() // Maps message ID to Promise resolve/reject
@@ -51,9 +53,14 @@ export function initCVCamera(renderer, getRobotFn, getSceneFn) {
 
   const manifest   = getManifest()
   const camSensor  = manifest?.sensors?.find(s => s.type === 'camera')
-  const eyeFOV     = camSensor?.config?.fov || 110
+  // NOTE: config.fov is the raycast-fan FOV (can be ~179°). Using that as a
+  // perspective-projection FOV made everything project to a few pixels and
+  // broke colour sampling. The eye camera uses cvFov (default 100°) instead.
+  const eyeFOV     = Math.min(camSensor?.config?.cvFov || 100, 130)
+  _eyeFovRad       = eyeFOV * (Math.PI / 180)
+  _camRange        = camSensor?.config?.range || 8.0
 
-  _eyeCamera = new THREE.PerspectiveCamera(eyeFOV, 1.0, 0.05, 25)
+  _eyeCamera = new THREE.PerspectiveCamera(eyeFOV, 1.0, 0.05, 30)
 
   _renderTarget = new THREE.WebGLRenderTarget(CAPTURE_SIZE, CAPTURE_SIZE, {
     minFilter: THREE.LinearFilter,
@@ -402,6 +409,9 @@ async function _runCV() {
         maxY = Math.max(maxY, py)
     })
 
+    // Range gate — the camera cannot recognise objects beyond its rated range
+    if (distToCenter > _camRange * 1.25) return
+
     if (!detected.has(rootName)) {
         detected.set(rootName, { name: rootName, minX, maxX, minY, maxY, distM: distToCenter, center: center.clone() })
     } else {
@@ -410,8 +420,11 @@ async function _runCV() {
         entry.maxX = Math.max(entry.maxX, maxX)
         entry.minY = Math.min(entry.minY, minY)
         entry.maxY = Math.max(entry.maxY, maxY)
-        entry.distM = Math.min(entry.distM, distToCenter)
-        entry.center.add(center).multiplyScalar(0.5)
+        // Keep the centre of the closest sub-mesh (repeated averaging drifted)
+        if (distToCenter < entry.distM) {
+          entry.distM = distToCenter
+          entry.center.copy(center)
+        }
     }
   })
 
@@ -434,25 +447,21 @@ async function _runCV() {
     // Skip if box is way too small (e.g. noise or mostly off-screen)
     if (box.xmax - box.xmin < 4 || box.ymax - box.ymin < 4) continue
 
-    const cx = Math.floor((box.xmin + box.xmax) / 2)
-    const cy = Math.floor((box.ymin + box.ymax) / 2)
-
     // Determine basic label
     let label = 'object'
     const n = name.toLowerCase()
-    if (n.includes('box')) label = 'box'
+    if (n.includes('box') || n.includes('crate')) label = 'box'
     else if (n.includes('ball')) label = 'sports ball'
     else if (n.includes('goal')) label = 'stop sign'
+    else if (n.includes('pillar')) label = 'pillar'
 
-    // Sample color exactly from the 2D render context
-    let color = 'unknown'
-    try {
-        const pixel = _pixelCtx.getImageData(cx, cy, 1, 1).data
-        color = _rgbToColorName(pixel[0], pixel[1], pixel[2])
-    } catch(e) {}
-    
+    // Multi-point colour sampling with voting — robust against specular
+    // highlights, shadow edges and background bleed (centre pixel alone
+    // frequently misread shaded objects).
+    const color = _sampleBoxColor(box)
+
     // Simulated confidence score based on distance (closer = more confident)
-    const score = Math.min(0.99, Math.max(0.55, 1.0 - (entry.distM / 12)))
+    const score = Math.min(0.99, Math.max(0.55, 1.0 - (entry.distM / (_camRange * 1.5))))
 
     newBoxes.push({ label, score, box, color })
 
@@ -461,11 +470,26 @@ async function _runCV() {
     const approxZ = entry.center.z + noise()
     const approxY = entry.center.y
 
-    const objectId = _labelToId(label, color) || name
-    
-    updatePerceptionMemory(objectId, { x: approxX, y: approxY, z: approxZ }, score)
+    // Physical size estimate from angular width (like a real RGB-D pipeline):
+    // a sphere of radius r at distance d subtends 2·asin(r/d).
+    const angW = ((entry.maxX - entry.minX) / CAPTURE_SIZE) * _eyeFovRad
+    const estRadius = Math.min(0.9, Math.max(0.1, entry.distM * Math.sin(Math.min(angW, Math.PI * 0.5) / 2)))
 
-    console.log(`[CVCamera] 👁 [Mock] "${color} ${label}" → ${objectId} ~${entry.distM.toFixed(1)}m (conf ${score.toFixed(2)})`)
+    // ID: trust the detector's tracked instance name when it follows scene
+    // naming (ball_*/box_*/...) — prevents two brown boxes collapsing into one
+    // id. Colour+label mapping is the fallback for unnamed meshes.
+    const objectId = /^(ball|box|crate|pillar|goal|object)_/i.test(name)
+      ? name
+      : (_labelToId(label, color) || name)
+
+    updatePerceptionMemory(
+      objectId,
+      { x: approxX, y: approxY, z: approxZ },
+      score,
+      { colorName: color, label, radius: estRadius }
+    )
+
+    console.log(`[CVCamera] 👁 [Mock] "${color} ${label}" → ${objectId} ~${entry.distM.toFixed(1)}m r~${estRadius.toFixed(2)} (conf ${score.toFixed(2)})`)
 
     results.push({ objectId, label, color, distanceCategory: 'medium', approxX, approxZ, confidence: score })
   }
@@ -510,38 +534,69 @@ function _labelToId(label, color) {
 }
 
 /**
- * Converts sampled RGB values to a basic semantic color name.
+ * Sample several points inside a bounding box and vote on the colour name.
+ * The centre pixel gets extra weight; 'unknown' votes are discarded.
+ * @param {{xmin:number,xmax:number,ymin:number,ymax:number}} box
+ * @returns {string}
+ */
+function _sampleBoxColor(box) {
+  const OFFSETS = [
+    [0.50, 0.50, 1.5],   // centre (weighted)
+    [0.34, 0.50, 1.0],
+    [0.66, 0.50, 1.0],
+    [0.50, 0.34, 1.0],
+    [0.50, 0.66, 1.0],
+  ]
+  const votes = new Map()
+
+  for (const [fx, fy, w] of OFFSETS) {
+    const sx = Math.round(Math.min(CAPTURE_SIZE - 1, Math.max(0, box.xmin + (box.xmax - box.xmin) * fx)))
+    const sy = Math.round(Math.min(CAPTURE_SIZE - 1, Math.max(0, box.ymin + (box.ymax - box.ymin) * fy)))
+    try {
+      const p = _pixelCtx.getImageData(sx, sy, 1, 1).data
+      const c = _rgbToColorName(p[0], p[1], p[2])
+      if (c && c !== 'unknown') votes.set(c, (votes.get(c) || 0) + w)
+    } catch (e) { /* off-canvas sample — skip */ }
+  }
+
+  let best = 'unknown'
+  let bestVotes = 0
+  for (const [c, v] of votes) {
+    if (v > bestVotes) { bestVotes = v; best = c }
+  }
+  return best
+}
+
+/**
+ * Converts sampled RGB values to a semantic colour name.
+ * Classifies in HSV space: hue decides the family, saturation/value separate
+ * white/gray/black/brown. Far more robust under scene lighting and shading
+ * than nearest-RGB matching (which called shaded green "gray").
  */
 function _rgbToColorName(r, g, b) {
-  // Simple Euclidean distance to preset color vectors
-  const colors = {
-    red:    [255, 0, 0],
-    green:  [0, 255, 0],
-    blue:   [0, 0, 255],
-    yellow: [255, 255, 0],
-    orange: [255, 128, 0],
-    purple: [128, 0, 128],
-    pink:   [255, 192, 203],
-    white:  [255, 255, 255],
-    black:  [0, 0, 0],
-    gray:   [128, 128, 128],
-    brown:  [139, 69, 19]
+  const rn = r / 255, gn = g / 255, bn = b / 255
+  const max = Math.max(rn, gn, bn)
+  const min = Math.min(rn, gn, bn)
+  const d = max - min
+  const v = max
+  const s = max === 0 ? 0 : d / max
+
+  let h = 0
+  if (d > 0) {
+    if (max === rn)      h = 60 * (((gn - bn) / d) % 6)
+    else if (max === gn) h = 60 * ((bn - rn) / d + 2)
+    else                 h = 60 * ((rn - gn) / d + 4)
+    if (h < 0) h += 360
   }
 
-  let minList = Infinity
-  let match = 'unknown'
+  if (v < 0.12) return 'black'
+  if (s < 0.16) return v > 0.82 ? 'white' : (v > 0.28 ? 'gray' : 'black')
 
-  for (const [name, rgb] of Object.entries(colors)) {
-    const dist = Math.sqrt(
-      Math.pow(r - rgb[0], 2) +
-      Math.pow(g - rgb[1], 2) +
-      Math.pow(b - rgb[2], 2)
-    )
-    if (dist < minList) {
-      minList = dist
-      match = name
-    }
-  }
-
-  return match
+  if (h < 14 || h >= 345) return (v > 0.78 && s < 0.55) ? 'pink' : 'red'
+  if (h < 42)  return v < 0.62 ? 'brown' : 'orange'
+  if (h < 70)  return 'yellow'
+  if (h < 170) return 'green'
+  if (h < 255) return 'blue'
+  if (h < 292) return 'purple'
+  return 'pink'
 }

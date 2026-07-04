@@ -28,6 +28,7 @@ import { initRLBridge, sendObservation, isRLConnected } from './src/rl/bridge.js
 import { initDashboard, showNotification } from './src/ui/dashboard.js'
 import { initControls } from './src/ui/controls.js'
 import { initEnvironment, loadDefaultLayout, loadRLLayout, updateInteractables, applyRobotPush } from './src/env/objects.js'
+import { navMotorTick } from './src/nav/pathfinder.js'
 import { initBackgroundAgent, resetIdleTimer } from './src/brain/background_agent.js'
 import { initSkillEditor } from './src/ui/skill_editor.js'
 import { initVisualizer } from './src/debug/visualizer.js'
@@ -125,6 +126,10 @@ async function boot() {
     initEngine(robot)
     
     // Register system update functions
+    // Motor: navigation follower runs at the fixed physics rate (60 Hz),
+    // BEFORE movement is committed — waypoint following, reactive LiDAR
+    // avoidance and stuck recovery all live on the physics clock now.
+    registerSystem('motor', (dt, r) => navMotorTick(dt, r))
     registerSystem('physics', (dt) => stepPhysicsWorld(dt))
     registerSystem('objects', (dt) => {
       // 1. Sync all dynamic interactable mesh positions from Rapier physics

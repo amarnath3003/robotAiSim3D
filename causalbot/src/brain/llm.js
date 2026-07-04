@@ -101,32 +101,52 @@ ${robotDesc}
 
 # PERCEPTION (Read carefully)
 You are BLIND to the world by default. The only things you know are:
-1. Your current position and what you are holding.
+1. Your current position/heading and what you are holding.
 2. Objects listed in "Perceived Objects" below — detected by your camera/sensors.
 3. Your recent action history.
 
-You do NOT have a map. You do NOT know where anything is unless it appears in "Perceived Objects".
+You do NOT have a map of objects. You do NOT know where anything is unless it appears in "Perceived Objects".
 Object positions are APPROXIMATE (plus or minus 0.3m) — sensors are not perfectly accurate.
-Physics-driven objects (balls, boxes) can MOVE — re-scan if a position seems stale.
+Physics-driven objects (balls, boxes) can MOVE — skills re-verify positions automatically.
 
-# HOW TO FIND AN OBJECT
-1. Check "Perceived Objects" — if the target is there with confidence > 0.3, navigate directly.
-2. NOT in memory? Use scan_for(target:"description") to rotate and look with camera.
-3. Scan failed? Use explore() or move_and_look() to change position, then scan again.
-4. Persist intelligently — try multiple angles and positions. This is how real robots work.
-5. Never give up after one scan. Explore, reposition, scan again.
+# NAVIGATION — AUTOMATIC OBSTACLE AVOIDANCE
+All movement skills (navigate_to, move_to_position, follow_path, patrol, explore…)
+use LiDAR + A* pathfinding underneath: they automatically avoid ALL walls, pillars
+and objects, replan when something blocks the way, and stop at safe distances.
+NEVER add manual obstacle-avoidance steps to a plan — it is built in.
+
+navigate_to(target) is FULLY self-sufficient: if the target is not yet perceived it
+automatically rotate-scans, then explores vantage points until it finds the object,
+then drives to it and stops at a safe distance facing it. One step does it all.
+scan_for is only needed when you want to LOOK without moving to the object.
+
+If a skill fails it throws a clear error and you will be asked to replan — trust
+the error text, do not repeat the same step unchanged.
+
+# GEOMETRIC / PATTERN MOVEMENT — COMPUTE THE WAYPOINTS YOURSELF
+For ANY shape, letter, curve or custom trajectory, compute the vertex list and call
+follow_path. There are no per-shape skills — you are the geometry engine.
+frame "robot": each point {x, y} is metres RIGHT(+x)/LEFT(−x) and FORWARD(+y) from
+the robot's current pose (start point (0,0) is implicit — do not include it).
+frame "world": absolute {x, z} coordinates. closed:true returns to the start.
+Walls in the way are fine — the path detours around them and resumes.
+
+Example — "move in a triangle with 2 m sides":
+{"skill":"follow_path","args":{"points":[{"x":0,"y":2},{"x":-1.73,"y":1}],"frame":"robot","closed":true}}
+Example — "walk in a circle of radius 2":
+points = 12 samples of {x: 2*cos(t)-2, y: 2*sin(t)} for t=30°,60°,…,360° (circle through the start, centre 2 m to the left), closed:true.
+Same method for squares, stars, zigzags, letters, spirals — sample the geometry, keep points within ±14 world metres.
 
 # TASK DECOMPOSITION
-"pick up X"        → [scan_for(target:"X"), navigate_to(target:"X"), pick_up(target:"X")]
-"push X"           → [scan_for(target:"X"), navigate_to(target:"X"), push(target:"X")]
-"navigate to X"    → [scan_for(target:"X"), navigate_to(target:"X")]
-"place near Y"     → [scan_for(target:"Y"), place_near(target:"Y")]  (if already holding)
+"go to X / reach X / find X"  → [navigate_to(target:"X")]          (one step — it self-searches)
+"pick up X"        → [pick_up(target:"X")]                          (self-searching too)
+"push X"           → [push(target:"X")]
+"bring X to Y"     → [pick_up(target:"X"), place_near(target:"Y")]
+"move in a <shape>" → [follow_path(points: <computed vertices>, frame:"robot", closed:true)]
 "scan the room"    → [scan_room]
 "go forward 2s"    → [move_forward(duration:2000)]
 "turn left 90deg"  → [turn_left(degrees:90)]
 "explore"          → [explore(steps:4)]
-
-SKIP scan_for if the object already appears in "Perceived Objects" with confidence > 0.4.
 
 # OBJECT IDENTITY
 - Use the EXACT id from "Perceived Objects" (e.g. "ball_red", "ball_blue", "box_A").
@@ -250,8 +270,16 @@ that control a robot through a provided context API. The code runs in a physics 
 
 # Available Context API:
 - context.getPos() → {x, y, z}
+- context.getHeading() → radians (0 = +Z; forward = (sin h, cos h))
 - context.setPos(x, y, z) — teleport (use sparingly, prefer smooth movement)
-- context.navigateTo(x, y, z, speed?) → Promise (A* pathfinding, resolves on arrival)
+- context.navigateTo(x, y, z, opts?) → Promise<{arrived, finalDist}> — A* + LiDAR
+  obstacle avoidance built in; opts = speed number or {speed, approach, face:{x,z}}.
+  THROWS if the destination is unreachable.
+- context.navigatePath([{x,z},...], opts?) → Promise<{reached, skipped, total}> —
+  follow world waypoints in order with automatic detours around obstacles
+- context.acquireObject(desc) → Promise<match|null> — find an object by description,
+  auto-scanning and exploring if it has not been seen yet
+- context.spinScan(desc?) → Promise — 360° camera sweep in place
 - context.moveForward(speed) — set forward velocity
 - context.rotate(angularSpeed) — set rotation speed
 - context.stop() — stop all movement
@@ -261,7 +289,8 @@ that control a robot through a provided context API. The code runs in a physics 
 - context.release()
 - context.wait(ms) → Promise
 - context.setStatus(text) — update UI status
-- context.getKnownObjects() → [{id, position, confidence}]
+- context.getKnownObjects() → [{id, position, confidence, meta:{radius, colorName}}]
+- context.findPerceivedObject(desc) → match|null (memory only, no search)
 - context.checkFeasibility(action, params) → {feasible, reason}
 
 # Rules:
@@ -326,8 +355,14 @@ function buildPlanningPrompt(instruction, { knownObjects, history, availableSkil
   
   lines.push(`# Current State`)
   lines.push(`Robot position: [${robotState.position?.x?.toFixed(2) || 0}, ${robotState.position?.y?.toFixed(2) || 0}, ${robotState.position?.z?.toFixed(2) || 0}]`)
+  const q = robotState.orientation
+  if (q) {
+    const headingDeg = Math.atan2(2 * (q.w * q.y + q.x * q.z), 1 - 2 * (q.y * q.y + q.z * q.z)) * (180 / Math.PI)
+    lines.push(`Robot heading: ${headingDeg.toFixed(0)}° (0° = +Z axis; forward = (sin h, cos h))`)
+  }
   lines.push(`Robot status: ${robotState.status || 'idle'}`)
   lines.push(`Holding: ${robotState.heldObjects?.length ? robotState.heldObjects.join(', ') : 'nothing'}`)
+  lines.push(`Arena: 32m x 32m, boundary walls at x=±16 and z=±16. Keep goals within ±15.`)
   lines.push('')
 
   // Semantic scene graph — richer than flat object list
