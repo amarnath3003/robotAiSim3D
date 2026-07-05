@@ -8,6 +8,7 @@ const loader = new GLTFLoader()
 let root, armMesh, handMesh, eyeMesh
 let debugRoot, debugArmMesh, debugHandMesh, debugEyeMesh
 let heldMeshParentedId = null
+let perceptionImportWarned = false
 
 export async function initRobot() {
   const gltf = await loader.loadAsync('/robot1.glb')
@@ -258,7 +259,12 @@ export function navigateTo(tx, ty, tz, onArrived, speed = 2.5, excludeIds = null
           distance:     h.distance,
           confidence:   h.confidence,
         })))
-      ).catch(() => {})
+      ).catch(err => {
+        if (!perceptionImportWarned) {
+          perceptionImportWarned = true
+          console.warn('[Robot] perceptual memory update failed:', err)
+        }
+      })
     }
 
     // ── 4. Visualise ────────────────────────────────────────────────────────

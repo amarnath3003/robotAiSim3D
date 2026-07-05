@@ -643,7 +643,10 @@ function _findInteractable(nameOrId) {
     const meshName  = (entry.mesh.name          || '').toLowerCase()
     const labelName = (entry.mesh.userData?.label || '').toLowerCase()
     if (meshName === lower || labelName === lower) return entry
-    if (meshName.includes(lower) || lower.includes(meshName.replace(/^i(box|ball)_\w+_\w+$/, '').trim() || meshName)) return entry
+    // Partial match: query inside mesh name, or generic kind ("box"/"ball")
+    // of an auto-generated id (ibox_<ts>_<rand>) inside the query
+    const kind = meshName.replace(/^i(box|ball)_\w+_\w+$/, '$1')
+    if (meshName.includes(lower) || (kind !== meshName && lower.includes(kind))) return entry
   }
 
   return null

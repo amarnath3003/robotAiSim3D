@@ -67,13 +67,14 @@ def train():
 
     if latest_checkpoint:
         print(f'\n✅  Resuming from: {latest_checkpoint}')
-        model = PPO.load(latest_checkpoint, env=env)
-        # Restore VecNormalize running stats if they exist
+        # Restore VecNormalize running stats BEFORE loading the model so the
+        # model trains against the restored normalization, not a fresh one
         if os.path.exists(VECNORM_PATH):
             env = VecNormalize.load(VECNORM_PATH, vec_env)
             env.training = True
             env.norm_reward = True
             print(f'    VecNormalize stats loaded from {VECNORM_PATH}')
+        model = PPO.load(latest_checkpoint, env=env)
     else:
         print('\n⚠️  No checkpoint found. Starting from scratch...\n')
         model = PPO(

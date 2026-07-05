@@ -226,7 +226,7 @@ async function boot() {
       // A new skill was synthesized by the LLM and auto-approved.
       // Surface it so the user knows a new capability was added.
       showNotification(`New skill "${info.name}" learned and saved`, 'success', 4000)
-      setState('robot.status', 'Idle')
+      setState('robot.status', 'idle')
     })
     console.log('')
     

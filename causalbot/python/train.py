@@ -16,7 +16,7 @@ def main():
         obs, reward, terminated, truncated, info = env.step(action)
         
         if i % 10 == 0:
-            print(f"Step {i} | Reward: {reward:.3f} | Dist to ball: {((obs[0]-obs[10])**2 + (obs[2]-obs[12])**2)**0.5:.2f}")
+            print(f"Step {i} | Reward: {reward:.3f} | Dist to target: {obs[0]:.2f}")
             
         if terminated or truncated:
             print("Episode finished. Resetting...")

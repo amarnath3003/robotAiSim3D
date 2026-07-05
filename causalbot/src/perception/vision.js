@@ -142,7 +142,7 @@ export function castVision(robotPosition, facingAngle, scene) {
     // Try to get colorName from mesh userData for richer LLM context
     const colorName = data.colorName || null
     const displayName = colorName
-      ? `${colorName} ${name.replace(/^object_|^ball_[a-z]+$|^box_[a-z]+$/i, m => m.includes('ball') ? 'ball' : 'box')}`
+      ? `${colorName} ${name.replace(/^object_/i, '').replace(/^(ball|box)_\w+$/i, '$1')}`
       : name.replace('object_', '')
 
     results.push({
