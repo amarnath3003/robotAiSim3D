@@ -189,8 +189,9 @@ export async function planWithLLM(instruction, context = {}) {
     availableSkills,
     robotState,
     failureContext: context.failureContext || null,
+    cotStyle: context.cotStyle || 'structured',
   })
-  
+
   // Include prior conversation turns so the LLM has multi-turn context
   const messages = [
     { role: 'system', content: systemPrompt },
@@ -230,6 +231,7 @@ export async function streamPlanWithLLM(instruction, context = {}, onChunk) {
     availableSkills,
     robotState,
     failureContext: context.failureContext || null,
+    cotStyle: context.cotStyle || 'structured',
   })
 
   const messages = [
@@ -247,12 +249,95 @@ export async function streamPlanWithLLM(instruction, context = {}, onChunk) {
 }
 
 /**
- * Call the LLM for skill synthesis (code generation).
- * 
+ * One ReAct reasoning step: given the instruction, the scratchpad of prior
+ * thought/action/observation triplets, and a FRESH observation of the world,
+ * return the next thought plus exactly one action (or done / infeasible).
+ *
+ * Stateless per call — the scratchpad IS the context, so reasoning is always
+ * grounded in the observation built this step (perception decays, objects move).
+ *
+ * @param {string} instruction
+ * @param {Object} params
+ * @param {Array<{thought, action, observation}>} params.scratchpad
+ * @param {string} params.observation - Fresh world snapshot (perception-memory only)
+ * @param {Array}  params.availableSkills - Full skill objects {name, description, args}
+ * @param {number} params.stepNumber
+ * @param {number} params.maxSteps
+ * @returns {Promise<{thought, action, done, doneReason, infeasible, infeasibleReason}>}
+ */
+export async function reactStepWithLLM(instruction, { scratchpad, observation, availableSkills, stepNumber, maxSteps }) {
+  const systemPrompt = buildSystemPrompt() + `
+
+# ReAct MODE — ONE STEP AT A TIME
+You are reasoning step-by-step in a closed loop. Each turn you produce ONE thought
+and ONE action. After the action executes you receive a fresh observation and think again.
+- Base decisions on the CURRENT observation, not assumptions. Perception decays; objects move.
+- If the target is not in perceived objects, remember navigate_to/pick_up self-search —
+  or scan first if you only need to look.
+- If the previous action FAILED, the observation says why. Change strategy — never repeat
+  a failed action unchanged.
+- Declare done:true as soon as the goal is achieved. Do not add unnecessary steps.
+- Declare infeasible:true if the task violates robot constraints or is impossible.
+- You have ${maxSteps} steps total. Be economical.`
+
+  const lines = []
+  lines.push(`# Task: "${instruction}"`)
+  lines.push('')
+
+  if (scratchpad.length > 0) {
+    lines.push(`# Previous Steps:`)
+    scratchpad.forEach((s, i) => {
+      lines.push(`Thought ${i + 1}: ${s.thought || '(none)'}`)
+      lines.push(`Action ${i + 1}: ${s.action ? `${s.action.skill}(${JSON.stringify(s.action.args || {})})` : '(none)'}`)
+      lines.push(`Observation ${i + 1}: ${s.observation}`)
+    })
+    lines.push('')
+  }
+
+  lines.push(`# Current Observation (step ${stepNumber}/${maxSteps}):`)
+  lines.push(observation)
+  lines.push('')
+
+  lines.push(`# Available Skills (use EXACT skill names and arg keys):`)
+  for (const s of availableSkills) {
+    const argStr = s.args && Object.keys(s.args).length > 0
+      ? Object.entries(s.args).map(([k, v]) => `${k}: ${v}`).join(', ')
+      : 'no args'
+    lines.push(`- ${s.name}(${argStr}) — "${s.description}"`)
+  }
+  lines.push('')
+
+  lines.push(`# Respond with JSON (ONE action per step):`)
+  lines.push(`{`)
+  lines.push(`  "thought": "reason about the goal, what you know now, and the best next move",`)
+  lines.push(`  "action": {"skill": "skill_name", "args": {"target": "object_id"}, "description": "what this does"},`)
+  lines.push(`  "done": false,`)
+  lines.push(`  "doneReason": null,`)
+  lines.push(`  "infeasible": false,`)
+  lines.push(`  "infeasibleReason": null`)
+  lines.push(`}`)
+  lines.push(`If done or infeasible, set action to null.`)
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: lines.join('\n') },
+  ]
+
+  const raw = await callLLM(messages, 1024, true /* forceJSON */)
+  return parseJSONResponse(raw)
+}
+
+/**
+ * Call the LLM for skill synthesis (code generation) with reason-before-code CoT.
+ *
+ * The LLM must first reason about approach, physics constraints, and risks,
+ * THEN write the code — reducing constraint violations and giving the verifier
+ * (and trace log) a machine-readable risk declaration.
+ *
  * @param {string} skillName - Name for the new skill
  * @param {string} description - What the skill should do
  * @param {Object} context - Robot state, available primitives, etc.
- * @returns {Promise<string|null>} Generated JavaScript code or null on failure
+ * @returns {Promise<{code: string, reasoning: Object|null}|null>} Code + reasoning, or null on failure
  */
 export async function synthesizeSkill(skillName, description, context = {}) {
   const manifest = getManifest()
@@ -299,7 +384,18 @@ that control a robot through a provided context API. The code runs in a physics 
 - Respect joint limits from the manifest
 - Return to neutral state after skill completes
 - Max 30 lines, efficient, no comments
-- Output ONLY the function body (no \`\`\`, no function declaration)`
+
+# THINK BEFORE YOU CODE
+First reason about the approach, the physics constraints involved, and what could
+go wrong. THEN write the code. Respond with JSON:
+{
+  "reasoning": {
+    "approach": "how the skill will work, step by step",
+    "physicsChecks": "which constraints (speed/reach/joints) apply and how the code respects them",
+    "risks": ["what could fail or violate constraints"]
+  },
+  "code": "the function body as a single string (no \`\`\`, no function declaration)"
+}`
 
   const userMessage = `Write skill "${skillName}": ${description}
 
@@ -311,12 +407,21 @@ Existing skills (don't duplicate): ${context.existingSkills?.join(', ') || 'none
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userMessage },
   ]
-  
+
   try {
-    const raw = await callLLM(messages, 600)
-    // Strip any markdown code fencing
-    const code = raw.replace(/```(?:javascript|js)?\n?/gi, '').replace(/```/g, '').trim()
-    return code
+    const raw = await callLLM(messages, 1200, true /* forceJSON */)
+
+    // Preferred path: structured {reasoning, code} response
+    try {
+      const parsed = parseJSONResponse(raw)
+      if (parsed?.code && typeof parsed.code === 'string') {
+        return { code: parsed.code.trim(), reasoning: parsed.reasoning || null }
+      }
+    } catch { /* fall through to legacy extraction */ }
+
+    // Fallback: model ignored the JSON format and returned bare code
+    const code = raw.replace(/```(?:javascript|js|json)?\n?/gi, '').replace(/```/g, '').trim()
+    return code ? { code, reasoning: null } : null
   } catch (e) {
     console.error(`[LLM] Skill synthesis failed for "${skillName}":`, e)
     return null
@@ -350,7 +455,7 @@ export async function reflectWithLLM(messages, maxTokens = 400) {
 
 // ─── Internal: Prompt Building ─────────────────────────────────────────────────
 
-function buildPlanningPrompt(instruction, { knownObjects, history, availableSkills, robotState, failureContext }) {
+function buildPlanningPrompt(instruction, { knownObjects, history, availableSkills, robotState, failureContext, cotStyle = 'structured' }) {
   const lines = []
   
   lines.push(`# Current State`)
@@ -430,15 +535,36 @@ function buildPlanningPrompt(instruction, { knownObjects, history, availableSkil
     lines.push(`Devise an ALTERNATIVE plan that avoids repeating the same failure.`)
     lines.push('')
   }
-  
+
   // The instruction
   lines.push(`# Instruction: "${instruction}"`)
   lines.push('')
-  
+
   // Response format — includes retries and optional per-step fields
   lines.push(`# Respond with JSON:`)
   lines.push(`{`)
-  lines.push(`  "reasoning": "step-by-step thinking about feasibility and approach",`)
+  if (cotStyle === 'structured') {
+    // Chain-of-thought: force explicit reasoning BEFORE the plan fields.
+    // Field order matters — autoregressive generation means the plan tokens
+    // are conditioned on the reasoning tokens.
+    lines.push(`  "cot": {`)
+    lines.push(`    "situation": "what I know right now from perception, memory and history",`)
+    lines.push(`    "unknowns": "what I do NOT know yet and whether the plan must discover it",`)
+    lines.push(`    "feasibility": "check the task against robot constraints (speed, reach, capabilities)",`)
+    lines.push(`    "strategy": "chosen approach and WHY it beats the alternatives",`)
+    lines.push(`    "risks": "most likely failure point of this plan and its mitigation"`)
+    lines.push(`  },`)
+    if (failureContext) {
+      lines.push(`  "failureAnalysis": {`)
+      lines.push(`    "whatHappened": "factual description of the failure",`)
+      lines.push(`    "rootCause": "the underlying reason, not the symptom",`)
+      lines.push(`    "worldChanged": "what the failure reveals about the world (blocked path, missing object...)",`)
+      lines.push(`    "newStrategy": "how the recovery plan differs and why it will work"`)
+      lines.push(`  },`)
+    }
+  } else {
+    lines.push(`  "reasoning": "step-by-step thinking about feasibility and approach",`)
+  }
   lines.push(`  "plan": [`)
   lines.push(`    {`)
   lines.push(`      "skill": "skill_name",`)
@@ -451,13 +577,17 @@ function buildPlanningPrompt(instruction, { knownObjects, history, availableSkil
   lines.push(`  "needsSynthesis": false,`)
   lines.push(`  "newSkillSpec": null,`)
   lines.push(`  "infeasible": false,`)
-  lines.push(`  "infeasibleReason": null`)
+  lines.push(`  "infeasibleReason": null,`)
+  lines.push(`  "needsStepByStep": false`)
   lines.push(`}`)
   lines.push(``)
   lines.push(`Notes on plan fields:`)
   lines.push(`  retries: number of automatic retries on failure (0 = no retry, 1-3 for flaky steps)`)
   lines.push(`  optional: true if this step can fail without aborting the whole plan`)
-  
+  lines.push(`  needsStepByStep: set true (with empty plan) ONLY if the task cannot be planned upfront`)
+  lines.push(`    because later steps depend on what earlier steps discover — you will then be run in`)
+  lines.push(`    an interactive think-act-observe loop instead.`)
+
   return lines.join('\n')
 }
 

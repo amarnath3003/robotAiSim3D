@@ -25,7 +25,7 @@ import { initObserver, updatePerception } from './src/perception/observer.js'
 import { skillRegistry } from './src/skills/registry.js'
 import { handleInstruction, onPlannerEvent, buildExecutionContext } from './src/brain/planner.js'
 import { initRLBridge, sendObservation, isRLConnected } from './src/rl/bridge.js'
-import { initDashboard, showNotification } from './src/ui/dashboard.js'
+import { initDashboard, showNotification, updateThinkingPanel } from './src/ui/dashboard.js'
 import { initControls } from './src/ui/controls.js'
 import { initEnvironment, loadDefaultLayout, loadRLLayout, updateInteractables, applyRobotPush } from './src/env/objects.js'
 import { navMotorTick } from './src/nav/pathfinder.js'
@@ -199,9 +199,17 @@ async function boot() {
     // Planner events → notifications
     // SM-5: use lowercase status values to match state.js schema and the
     //        cb-ind-* CSS classes in controls.js (cb-ind-thinking, cb-ind-executing…)
-    onPlannerEvent('thinking', () => {
+    // Rolling CoT buffer: ReAct emits one thought per step — accumulate so the
+    // Brain panel shows the reasoning chain, not just the latest thought
+    const thinkingLog = []
+    onPlannerEvent('thinking', (msg) => {
       setState('robot.status', 'thinking')
       resetIdleTimer()   // keep background agent dormant while user instruction is active
+      if (msg) {
+        thinkingLog.push(msg)
+        if (thinkingLog.length > 15) thinkingLog.shift()
+        updateThinkingPanel(thinkingLog.join('\n\n'))
+      }
     })
     onPlannerEvent('executing', (info) => {
       setState('robot.status', 'executing')

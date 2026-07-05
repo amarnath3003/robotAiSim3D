@@ -14,7 +14,7 @@
  * This replaces the old executor.js with a more robust pipeline.
  */
 
-import { planWithLLM, synthesizeSkill, clearConversationHistory, reflectWithLLM } from './llm.js'
+import { planWithLLM, synthesizeSkill, clearConversationHistory, reflectWithLLM, getTokenUsage } from './llm.js'
 // XM-4: removed checkPlanFeasibility — it's not called directly in planner.js
 import { checkFeasibility } from './feasibility.js'
 import { getRobot, setRobotStatus, logExecution, getKnownObjects, getRecentHistory } from '../core/state.js'
@@ -23,6 +23,8 @@ import { getRobot, setRobotStatus, logExecution, getKnownObjects, getRecentHisto
 import { navigateTo as pathNavigateTo, navigatePath as pathNavigatePath, abortNavigation } from '../nav/pathfinder.js'
 import { BTRunner, Blackboard, planToBehaviorTree } from './behavior_tree.js'
 import { reflect } from './reflection.js'
+import { runReActLoop } from './react_loop.js'
+import { cotTrace, getCoTMode } from './cot_trace.js'
 import {
   grabInteractable,
   releaseInteractable,
@@ -35,6 +37,8 @@ let _executing = false
 let _currentPlan = null
 let _currentStep = 0
 let _abortRequested = false
+let _activeMode = 'adaptive'     // CoT mode for the current instruction (off|prompt|react|adaptive)
+let _reactEscalated = false      // Guard: at most one plan→ReAct escalation per instruction
 
 const MAX_REPLAN_ATTEMPTS = 2   // How many times we'll ask the LLM to recover
 
@@ -79,7 +83,11 @@ export function abortExecution() {
 /**
  * Handle a user instruction end-to-end.
  * This is the main entry point — replaces the old handleInstruction().
- * 
+ *
+ * Wraps the core pipeline with CoT trace bookkeeping: every instruction
+ * becomes one trace episode (mode, routing tier, thoughts, actions, outcome,
+ * token cost) exportable via window.exportCoTTraces() for experiments.
+ *
  * @param {string} instruction - Natural language instruction from user
  * @param {Object} skillRegistry - The skill registry instance
  * @returns {Promise<{success: boolean, reason: string}>}
@@ -88,12 +96,38 @@ export async function handleInstruction(instruction, skillRegistry) {
   if (_executing) {
     return { success: false, reason: 'Already executing a plan. Wait or abort.' }
   }
-  
+
+  _activeMode = getCoTMode()
+  _reactEscalated = false
+  cotTrace.startEpisode(instruction, _activeMode, 'unrouted')
+  const tokensBefore = getTokenUsage()
+
+  let result
+  try {
+    result = await _handleInstructionCore(instruction, skillRegistry)
+  } catch (e) {
+    result = { success: false, reason: e.message }
+  }
+
+  const tokensAfter = getTokenUsage()
+  cotTrace.endEpisode({
+    success: result.success,
+    reason: result.reason,
+    tokens: {
+      prompt: tokensAfter.prompt - tokensBefore.prompt,
+      completion: tokensAfter.completion - tokensBefore.completion,
+    },
+  })
+
+  return result
+}
+
+async function _handleInstructionCore(instruction, skillRegistry) {
   const robot = getRobot()
   if (!robot) {
     return { success: false, reason: 'No robot loaded.' }
   }
-  
+
   _executing = true
   _abortRequested = false
   setRobotStatus('planning')
@@ -116,6 +150,7 @@ export async function handleInstruction(instruction, skillRegistry) {
     // ─── Step 2: Try direct skill match (skip LLM for simple commands) ───
     const directMatch = tryDirectMatch(instruction, skillRegistry)
     if (directMatch) {
+      cotTrace.record('route', { tier: 'direct', skill: directMatch.skill })
       const result = await executePlan(
         [{ skill: directMatch.skill, args: directMatch.args, description: instruction }],
         skillRegistry,
@@ -124,24 +159,48 @@ export async function handleInstruction(instruction, skillRegistry) {
       )
       return result
     }
-    
+
+    // ─── Step 2.5: Adaptive CoT routing ──────────────────────────────────
+    // 'react' mode: every LLM-planned instruction runs the ReAct loop.
+    // 'adaptive' mode: only instructions classified complex (sequenced clauses,
+    // discovery, iteration, conditionals) pay the multi-call ReAct cost;
+    // simple ones stay on the cheap single-call path below.
+    const complexity = classifyComplexity(instruction)
+    if (_activeMode === 'react' || (_activeMode === 'adaptive' && complexity === 'complex')) {
+      cotTrace.record('route', { tier: 'react', complexity })
+      _onThinking?.(`Complex task — reasoning step-by-step (ReAct).`)
+      return await runReActPath(instruction, skillRegistry, robot)
+    }
+    cotTrace.record('route', { tier: 'plan', complexity })
+
     // ─── Step 3: Call LLM for task decomposition ─────────────────────────
     const robotState = robot.getStateSnapshot()
     const knownObjects = getKnownObjects(0.2)
     const history = getRecentHistory(5)
     const availableSkills = skillRegistry.getAllForLLM()   // full objects: name, description, args
-    
+
     const llmResponse = await planWithLLM(instruction, {
       knownObjects,
       history,
       availableSkills,
       robotState,
+      cotStyle: _activeMode === 'off' ? 'off' : 'structured',
     })
-    
+
     if (!llmResponse) {
       throw new Error('LLM returned no response')
     }
-    
+
+    // ─── Step 3.5: LLM self-escalation to ReAct ──────────────────────────
+    // The planner LLM can declare the task unplannable-upfront (later steps
+    // depend on what earlier steps discover) — switch to the ReAct loop.
+    if (llmResponse.needsStepByStep && !llmResponse.plan?.length &&
+        (_activeMode === 'adaptive' || _activeMode === 'react')) {
+      cotTrace.record('escalation', { from: 'plan', reason: 'needsStepByStep' })
+      _onThinking?.('Plan depends on discoveries along the way — switching to step-by-step reasoning.')
+      return await runReActPath(instruction, skillRegistry, robot)
+    }
+
     // ─── Step 4: Handle infeasible response ──────────────────────────────
     if (llmResponse.infeasible) {
       const reason = llmResponse.infeasibleReason || 'The LLM determined this is not possible.'
@@ -175,7 +234,18 @@ export async function handleInstruction(instruction, skillRegistry) {
     }
     
     // ─── Step 6: Show reasoning ──────────────────────────────────────────
-    if (llmResponse.reasoning) {
+    if (llmResponse.cot) {
+      const c = llmResponse.cot
+      cotTrace.record('plan', { cot: c, skills: plan.map(s => s.skill) })
+      const parts = []
+      if (c.situation)   parts.push(`Situation: ${c.situation}`)
+      if (c.unknowns)    parts.push(`Unknowns: ${c.unknowns}`)
+      if (c.feasibility) parts.push(`Feasibility: ${c.feasibility}`)
+      if (c.strategy)    parts.push(`Strategy: ${c.strategy}`)
+      if (c.risks)       parts.push(`Risks: ${c.risks}`)
+      if (parts.length) _onThinking?.(`🧠 ${parts.join('\n')}`)
+    } else if (llmResponse.reasoning) {
+      cotTrace.record('plan', { reasoning: llmResponse.reasoning, skills: plan.map(s => s.skill) })
       _onThinking?.(llmResponse.reasoning)
     }
     
@@ -306,6 +376,18 @@ async function executePlan(plan, skillRegistry, robot, instruction, replanDepth 
     _onThinking?.('Replan unsuccessful, continuing with graceful degradation.')
   }
 
+  // ── Last resort: escalate batch failure to closed-loop ReAct recovery ────
+  // Batch replans reason about a stale world snapshot; the ReAct loop
+  // re-observes after every action, so it can recover from failures whose
+  // cause the snapshot can't see (moved objects, decayed perception).
+  if (!_abortRequested && !_reactEscalated && _activeMode === 'adaptive') {
+    _reactEscalated = true
+    cotTrace.record('escalation', { from: 'replan', reason: failReason })
+    _onThinking?.('Batch replanning exhausted — escalating to step-by-step ReAct recovery.')
+    _currentPlan = null
+    return await runReActPath(instruction, skillRegistry, robot, failReason)
+  }
+
   setRobotStatus('idle')
   _executing = false
   _currentPlan = null
@@ -355,11 +437,24 @@ async function _replanAfterFailure(instruction, failReason, remainingSteps, skil
       availableSkills,
       robotState,
       failureContext: `${failReason}. ${remainingDesc} Produce a new recovery plan.`,
+      cotStyle: _activeMode === 'off' ? 'off' : 'structured',
     })
 
     if (!llmResponse || llmResponse.infeasible || !llmResponse.plan?.length) {
       console.warn('[Planner] Replan returned infeasible or empty plan')
       return null
+    }
+
+    // Structured failure-analysis CoT: root cause + what the failure reveals
+    // about the world + why the new strategy should work
+    if (llmResponse.failureAnalysis) {
+      const fa = llmResponse.failureAnalysis
+      cotTrace.record('failure_analysis', fa)
+      const faParts = []
+      if (fa.rootCause)    faParts.push(`Root cause: ${fa.rootCause}`)
+      if (fa.worldChanged) faParts.push(`Learned: ${fa.worldChanged}`)
+      if (fa.newStrategy)  faParts.push(`New strategy: ${fa.newStrategy}`)
+      if (faParts.length) _onThinking?.(`🧠 ${faParts.join('\n')}`)
     }
 
     _onThinking?.(`Replan (attempt ${replanDepth}): ${llmResponse.plan.length} recovery steps`)
@@ -371,6 +466,101 @@ async function _replanAfterFailure(instruction, failReason, remainingSteps, skil
     console.warn('[Planner] Replan call failed:', e.message)
     return null
   }
+}
+
+// ─── ReAct Path ────────────────────────────────────────────────────────────────
+
+/**
+ * Execute an instruction via the ReAct closed loop (think → act → observe).
+ * Used for complex instructions (adaptive routing), for everything when
+ * cot_mode='react', and as last-resort escalation after batch replans fail.
+ *
+ * @param {string} instruction
+ * @param {Object} skillRegistry
+ * @param {Object} robot
+ * @param {string|null} [failureContext] - Set when escalating from a failed batch plan
+ * @returns {Promise<{success: boolean, reason: string}>}
+ */
+async function runReActPath(instruction, skillRegistry, robot, failureContext = null) {
+  setRobotStatus('executing')
+
+  const task = failureContext
+    ? `${instruction}\n(NOTE: a previous batch plan already failed: ${failureContext}. Recover and finish the task.)`
+    : instruction
+
+  const result = await runReActLoop(task, skillRegistry, robot, {
+    contextFn: (args) => buildExecutionContext(robot, args, skillRegistry),
+    abortFlag: () => _abortRequested,
+    onThought: (t) => _onThinking?.(t),
+    onExecuting: (e) => _onExecuting?.(e),
+  })
+
+  setRobotStatus(result.success ? 'idle' : (_abortRequested ? 'idle' : 'failed'))
+  _executing = false
+
+  // Reconstruct a plan-shaped step list from the trace so reflection,
+  // episodic memory and affordance recording stay consistent with the batch path
+  const executedSteps = result.trace
+    .filter(s => s.action)
+    .map(s => ({
+      skill: s.action.skill,
+      args: s.action.args || {},
+      description: s.action.description || s.thought?.slice(0, 80) || s.action.skill,
+    }))
+
+  if (result.success) {
+    _onComplete?.(instruction)
+    logExecution(instruction, 'success', `ReAct: ${result.steps} steps, ${result.llmCalls} LLM calls`)
+  } else {
+    _onError?.(result.reason)
+    logExecution(instruction, 'failure', result.reason)
+  }
+
+  reflect({
+    instruction,
+    plan: executedSteps,
+    success: result.success,
+    failReason: result.success ? undefined : result.reason,
+    robotPos: { x: robot.position.x, y: robot.position.y, z: robot.position.z },
+    knownObjects: getKnownObjects(0.2),
+  }, reflectWithLLM).catch(() => {})
+
+  return { success: result.success, reason: result.reason }
+}
+
+// ─── Complexity Classifier ─────────────────────────────────────────────────────
+
+/**
+ * Cheap local heuristic deciding whether an instruction needs closed-loop
+ * ReAct reasoning or a single batch plan suffices. No LLM call — pure regex.
+ *
+ * Complex signals: sequenced clauses, discovery/search, iteration over sets,
+ * conditionals, many distinct action verbs.
+ *
+ * @param {string} instruction
+ * @returns {'simple'|'complex'}
+ */
+function classifyComplexity(instruction) {
+  const lower = instruction.toLowerCase()
+  let score = 0
+
+  // Sequenced clauses — later steps depend on earlier outcomes
+  if (/\b(then|after that|and then|before|while|until|once|first|next|finally)\b/.test(lower)) score += 2
+
+  // Conditionals — plan branches on runtime state
+  if (/\b(if|unless|whenever|depending|in case)\b/.test(lower)) score += 2
+
+  // Iteration over an unknown-sized set
+  if (/\b(all|each|every|both|remaining)\b/.test(lower)) score += 2
+
+  // Discovery — target state unknown until sensed
+  if (/\b(find|search|look for|locate|explore|bring|fetch|collect|gather|count|check)\b/.test(lower)) score += 1
+
+  // Many distinct action verbs — long multi-skill task
+  const verbs = lower.match(/\b(go|move|turn|pick|grab|push|place|put|bring|scan|find|drop|throw|navigate|explore|search|carry|fetch|release|jump|wave|patrol)\b/g)
+  if (verbs && new Set(verbs).size >= 3) score += 1
+
+  return score >= 2 ? 'complex' : 'simple'
 }
 
 // ─── Execution Context Builder ─────────────────────────────────────────────────
@@ -599,29 +789,40 @@ export function buildExecutionContext(robot, args, skillRegistry) {
 
 async function handleSkillSynthesis(spec, skillRegistry, robot) {
   const { name, description } = spec
-  
+
   _onThinking?.(`Inventing new skill: "${name}"...`)
-  
-  const code = await synthesizeSkill(name, description, {
+
+  const synth = await synthesizeSkill(name, description, {
     robotPos: robot.position,
     existingSkills: skillRegistry.getAllNames(),
   })
-  
-  if (!code) return null
-  
+
+  if (!synth?.code) return null
+
+  // Surface the reason-before-code CoT: approach, physics checks, declared risks
+  if (synth.reasoning) {
+    cotTrace.record('synthesis_reasoning', { name, ...synth.reasoning })
+    const r = synth.reasoning
+    const parts = []
+    if (r.approach)      parts.push(`Approach: ${r.approach}`)
+    if (r.physicsChecks) parts.push(`Physics: ${r.physicsChecks}`)
+    if (r.risks?.length) parts.push(`Risks: ${[].concat(r.risks).join('; ')}`)
+    if (parts.length) _onThinking?.(`🧠 ${parts.join('\n')}`)
+  }
+
   // Register as pending approval
-  const skill = skillRegistry.registerSynthesized(name, code, description)
-  
+  const skill = skillRegistry.registerSynthesized(name, synth.code, description)
+
   if (!skill) {
     console.error(`[Planner] Failed to register synthesized skill "${name}"`)
     return null
   }
-  
+
   // Request approval from user (if callback registered)
   if (_onSkillApproval) {
-    _onSkillApproval({ name, code, description })
+    _onSkillApproval({ name, code: synth.code, description })
   }
-  
+
   return skill
 }
 

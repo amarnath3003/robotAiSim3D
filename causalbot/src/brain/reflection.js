@@ -87,11 +87,20 @@ export async function reflect(
         },
         { role: 'user', content: prompt },
       ],
-      400    // maxTokens — keep reflection lightweight
+      600    // maxTokens — causal-chain CoT needs headroom beyond the old 400
     )
 
     const parsed = _parseReflectionResponse(raw)
     if (!parsed) return
+
+    // On failure, the counterfactual is the most actionable lesson — store it
+    // so future planning prompts recall "what would have worked" directly
+    if (!success && typeof parsed.counterfactual === 'string' &&
+        parsed.counterfactual.trim().length > 5 &&
+        !/^none$/i.test(parsed.counterfactual.trim())) {
+      const cf = `When "${instruction}" fails: ${parsed.counterfactual.trim()}`
+      episodicMemory.recordLesson(cf, _extractKeywords(cf))
+    }
 
     // Write lessons to episodic memory
     for (const lesson of (parsed.lessons || [])) {
@@ -149,15 +158,20 @@ ${steps}
 
 Robot position at end: ${posStr}
 
-Respond with JSON:
+Reason causally BEFORE extracting lessons. Respond with JSON:
 {
+  "causalChain": "step X led to Y which caused the outcome — trace the actual cause-effect path",
+  "counterfactual": "the single change that would most have improved the outcome (or 'none' if optimal)",
   "lessons": ["generalizable rule 1", "rule 2"],
   "spatialFacts": ["location/layout observation"],
   "beliefs": [{"key": "belief_name", "value": "value"}]
 }
 
 Guidelines:
-- lessons: rules that would help with similar future tasks (max 2; leave [] if nothing new)
+- causalChain: identify the DECISIVE step, not a step-by-step retelling
+- counterfactual: what you would do differently — this becomes a lesson if actionable
+- lessons: rules that would help with similar future tasks (max 2; leave [] if nothing new).
+  Derive them from the causalChain and counterfactual, not from surface features.
 - spatialFacts: discovered locations, layouts, or object positions (max 2; leave [] if none)
 - beliefs: named world-state facts to remember (max 2; leave [] if none)
 
