@@ -54,6 +54,7 @@ export async function runReActLoop(instruction, skillRegistry, robot, opts = {})
   let llmCalls = 0
   let consecutiveFailures = 0
   let lastFailedActionKey = null
+  let reasoningFailures = 0
 
   for (let step = 0; step < maxSteps; step++) {
     if (abortFlag()) {
@@ -81,8 +82,20 @@ export async function runReActLoop(instruction, skillRegistry, robot, opts = {})
       })
     } catch (e) {
       cotTrace.record('error', { step: step + 1, message: e.message })
-      return { success: false, reason: `Reasoning failed: ${e.message}`, steps: step, llmCalls, trace: scratchpad }
+      reasoningFailures++
+      if (reasoningFailures >= 3) {
+        return { success: false, reason: `Reasoning failed: ${e.message}`, steps: step, llmCalls, trace: scratchpad }
+      }
+      // One malformed response (bad JSON, transient API hiccup) must not kill
+      // the whole episode — burn the step, tell the model, and ask again.
+      scratchpad.push({
+        thought: null,
+        action: null,
+        observation: 'ERROR: your previous response was not one valid JSON object. Respond with exactly ONE JSON object, nothing after it.',
+      })
+      continue
     }
+    reasoningFailures = 0
 
     const thought = String(decision.thought || '').trim()
     if (thought) {

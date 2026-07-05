@@ -108,6 +108,12 @@ async function boot() {
     // Camera follows the robot from boot
     setFollowTarget(robot)
     console.log('')
+
+    // Read-only debug/test hook: live robot pose + held objects
+    window.__robotDebug = () => ({
+      pos: { x: robot.position.x, y: robot.position.y, z: robot.position.z },
+      held: [...(robot.heldObjects || [])],
+    })
     
     // ─── Step 5: Initialize Perception ───────────────────────────────────
     console.log('[Boot] Initializing perception...')

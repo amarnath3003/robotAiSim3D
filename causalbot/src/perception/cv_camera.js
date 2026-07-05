@@ -509,27 +509,32 @@ function _labelToId(label, color) {
   const col   = color.toLowerCase()
 
   // Balls / spheres (COCO labels: sports ball, apple, orange, etc.)
+  // An unidentifiable colour means we cannot assign a STABLE identity —
+  // return null rather than minting a fresh id per frame. Timestamped ids
+  // created a new phantom object on every capture, flooding perception
+  // memory with hundreds of junk entries ("191 objects detected") that
+  // bloated every LLM prompt and poisoned fuzzy target matching.
   if (/ball|apple|orange|fruit|clock|vase/.test(lower)) {
-    if (!col || col === 'unknown') return `ball_unknown_${Date.now()}`
+    if (!col || col === 'unknown') return null
     return `ball_${col}`
   }
 
-  // Goal marker
-  if (/stop sign|kite|fire hydrant/.test(lower) && col === 'green') return 'goal_marker'
+  // Goal marker — the arena has exactly one; colour noise (emissive cyan reads
+  // green OR blue depending on exposure) must not fork its identity.
+  if (/stop sign|kite|fire hydrant/.test(lower)) return 'goal_marker'
 
   // Boxes / crates (COCO labels: suitcase, tv, microwave, oven, refrigerator, box)
   if (/suitcase|tv|microwave|oven|refrigerator|box|book|laptop/.test(lower)) {
     if (col === 'orange' || col === 'brown' || col === 'yellow') return 'box_A'
     if (col === 'black' || col === 'dark' || col === 'gray')  return 'box_B'
-    return `box_${col || 'unknown'}`
+    if (!col || col === 'unknown') return null
+    return `box_${col}`
   }
 
   // Pillars / columns (COCO: bottle, cup, vase)
   if (/bottle|cup|vase/.test(lower)) return 'pillar_A'
 
-  // Default fallback if we detect *something* and know its color
-  if (col) return `object_${col}_${Date.now()}`
-
+  // Unrecognized label + no stable identity — noise, not a new object track
   return null
 }
 

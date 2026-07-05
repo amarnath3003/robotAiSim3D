@@ -349,8 +349,15 @@ export class RobotInstance {
       if (this._controller && this._collider) {
         // Collision-safe movement — character controller resolves wall contacts
         // and slides the robot along surfaces rather than stopping dead.
+        // Kinematic colliders are excluded from the solve: a held object is
+        // switched to kinematic and hovers 0.5 m in front of the robot
+        // (overlapping the capsule), so without this filter the robot collides
+        // with its own cargo and freezes completely while carrying anything.
+        // NOTE: must be QueryFilterFlags.EXCLUDE_KINEMATIC — the predicate arg
+        // is silently ignored by rapier3d-compat 0.19's character controller.
         try {
-          this._controller.computeColliderMovement(this._collider, desired)
+          const EXCLUDE_KINEMATIC = 2   // RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC
+          this._controller.computeColliderMovement(this._collider, desired, EXCLUDE_KINEMATIC)
           const safe = this._controller.computedMovement()
           const cur  = this.physicsBody.translation()
           this.physicsBody.setNextKinematicTranslation({
@@ -709,10 +716,15 @@ function createPhysicsBody(world, RAPIER, physicsConfig) {
     controller.setMaxSlopeClimbAngle(45 * Math.PI / 180)
     controller.setMinSlopeSlideAngle(30 * Math.PI / 180)
     controller.setApplyImpulsesToDynamicBodies(true)
-    controller.setSnapToGroundDistance(0.12)  // snap back onto floor after tiny jumps
+    // Rapier ≥0.12 renamed setSnapToGroundDistance → enableSnapToGround
+    if (typeof controller.enableSnapToGround === 'function') controller.enableSnapToGround(0.12)
+    else controller.setSnapToGroundDistance(0.12)
     console.log('[Adapter] KinematicCharacterController ready')
   } catch (e) {
     console.warn('[Adapter] KinematicCharacterController unavailable — falling back to direct movement:', e.message)
+    // A half-configured controller must not be used: it was silently returned
+    // here once and froze the robot whenever it carried an object.
+    controller = null
   }
 
   return { body, collider, controller }

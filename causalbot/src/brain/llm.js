@@ -118,7 +118,16 @@ NEVER add manual obstacle-avoidance steps to a plan — it is built in.
 navigate_to(target) is FULLY self-sufficient: if the target is not yet perceived it
 automatically rotate-scans, then explores vantage points until it finds the object,
 then drives to it and stops at a safe distance facing it. One step does it all.
+pick_up, place_near and push self-search their targets the same way.
 scan_for is only needed when you want to LOOK without moving to the object.
+
+# REASON AT TASK LEVEL
+Plan WHAT to do (which objects, what order, what end state) — never HOW to move.
+Route geometry, obstacle avoidance and finding objects are subconscious: they
+happen inside skills. NEVER add scan_room/scan_for/explore steps just to locate
+a target that a self-searching skill (navigate_to, pick_up, place_near, push)
+will handle anyway — that wastes time and adds failure points. Scan/explore are
+task-level actions only when the instruction itself asks to look, count or map.
 
 If a skill fails it throws a clear error and you will be asked to replan — trust
 the error text, do not repeat the same step unchanged.
@@ -315,7 +324,7 @@ and ONE action. After the action executes you receive a fresh observation and th
 
   lines.push(`# Respond with JSON (ONE action per step):`)
   lines.push(`{`)
-  lines.push(`  "thought": "reason about the goal, what you know now, and the best next move",`)
+  lines.push(`  "thought": "ONE short sentence: what you know now and the best next move",`)
   lines.push(`  "action": {"skill": "skill_name", "args": {"target": "object_id"}, "description": "what this does"},`)
   lines.push(`  "done": false,`)
   lines.push(`  "doneReason": null,`)
@@ -515,10 +524,18 @@ function buildPlanningPrompt(instruction, { knownObjects, history, availableSkil
   lines.push(`# Perceived Objects (detected by camera/sensors — positions are APPROXIMATE):`)
   const perceivedObjects = getKnownObjects(0.1)
   if (perceivedObjects.length > 0) {
-    for (const o of perceivedObjects) {
+    // Cap the list: a polluted or very full memory must not balloon the prompt
+    const MAX_LISTED = 24
+    const listed = [...perceivedObjects]
+      .sort((a, b) => b.confidence - a.confidence)
+      .slice(0, MAX_LISTED)
+    for (const o of listed) {
       const ageMs  = Date.now() - (o.lastSeen || Date.now())
       const stale  = ageMs > 5000 ? ` [STALE ${(ageMs / 1000).toFixed(0)}s ago — may have moved]` : ''
       lines.push(`- ${o.id}  conf=${o.confidence.toFixed(2)}  pos=(${o.position.x.toFixed(1)}, ${o.position.z.toFixed(1)})${stale}`)
+    }
+    if (perceivedObjects.length > listed.length) {
+      lines.push(`  (+${perceivedObjects.length - listed.length} more lower-confidence detections omitted)`)
     }
   } else {
     lines.push(`  (none — robot has not scanned yet. Use scan_for or scan_room to discover objects.)`)
@@ -553,12 +570,14 @@ function buildPlanningPrompt(instruction, { knownObjects, history, availableSkil
     // Chain-of-thought: force explicit reasoning BEFORE the plan fields.
     // Field order matters — autoregressive generation means the plan tokens
     // are conditioned on the reasoning tokens.
+    // ONE sentence per field: reasoning tokens are generated serially while
+    // the robot stands frozen — depth comes from the fields, not verbosity.
     lines.push(`  "cot": {`)
-    lines.push(`    "situation": "what I know right now from perception, memory and history",`)
-    lines.push(`    "unknowns": "what I do NOT know yet and whether the plan must discover it",`)
-    lines.push(`    "feasibility": "check the task against robot constraints (speed, reach, capabilities)",`)
-    lines.push(`    "strategy": "chosen approach and WHY it beats the alternatives",`)
-    lines.push(`    "risks": "most likely failure point of this plan and its mitigation"`)
+    lines.push(`    "situation": "ONE sentence: what I know right now from perception, memory and history",`)
+    lines.push(`    "unknowns": "ONE sentence: what I do NOT know yet (skills self-discover their targets — an unseen object is only an unknown if NO skill can find it)",`)
+    lines.push(`    "feasibility": "ONE sentence: check against robot constraints (speed, reach, capabilities)",`)
+    lines.push(`    "strategy": "ONE sentence: chosen approach and why",`)
+    lines.push(`    "risks": "ONE sentence: most likely failure point and its mitigation"`)
     lines.push(`  },`)
     if (failureContext) {
       lines.push(`  "failureAnalysis": {`)
@@ -568,6 +587,8 @@ function buildPlanningPrompt(instruction, { knownObjects, history, availableSkil
       lines.push(`    "newStrategy": "how the recovery plan differs and why it will work"`)
       lines.push(`  },`)
     }
+  } else if (cotStyle === 'brief') {
+    lines.push(`  "reasoning": "1-2 short sentences: goal, chosen skills, expected end state",`)
   } else {
     lines.push(`  "reasoning": "step-by-step thinking about feasibility and approach",`)
   }
@@ -766,20 +787,42 @@ async function callLLMStream(messages, maxTokens = 512, onChunk) {
 
 // ─── Internal: Response Parsing ────────────────────────────────────────────────
 
+/**
+ * Extract the FIRST balanced JSON object from text (string-aware brace count).
+ * Models sometimes emit trailing prose or a second JSON object after the real
+ * one — a naive first-{ to last-} slice spans the garbage and fails to parse.
+ */
+function extractFirstJSONObject(text) {
+  const start = text.indexOf('{')
+  if (start === -1) return null
+  let depth = 0
+  let inStr = false
+  let esc = false
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i]
+    if (inStr) {
+      if (esc) esc = false
+      else if (ch === '\\') esc = true
+      else if (ch === '"') inStr = false
+    } else if (ch === '"') inStr = true
+    else if (ch === '{') depth++
+    else if (ch === '}') {
+      depth--
+      if (depth === 0) return text.slice(start, i + 1)
+    }
+  }
+  return null
+}
+
 function parseJSONResponse(raw) {
   // Strip markdown code fencing if present
-  let clean = raw.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim()
-  
-  // Find JSON object boundaries
-  const start = clean.indexOf('{')
-  const end = clean.lastIndexOf('}')
-  
-  if (start === -1 || end === -1) {
+  const clean = raw.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim()
+
+  const jsonStr = extractFirstJSONObject(clean)
+  if (!jsonStr) {
     throw new Error(`[LLM] No JSON object found in response: "${raw.slice(0, 100)}..."`)
   }
-  
-  const jsonStr = clean.slice(start, end + 1)
-  
+
   try {
     return JSON.parse(jsonStr)
   } catch (e) {

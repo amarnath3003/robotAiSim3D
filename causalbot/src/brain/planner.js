@@ -161,14 +161,19 @@ async function _handleInstructionCore(instruction, skillRegistry) {
     }
 
     // ─── Step 2.5: Adaptive CoT routing ──────────────────────────────────
-    // 'react' mode: every LLM-planned instruction runs the ReAct loop.
-    // 'adaptive' mode: only instructions classified complex (sequenced clauses,
-    // discovery, iteration, conditionals) pay the multi-call ReAct cost;
-    // simple ones stay on the cheap single-call path below.
+    // 'react' mode (ablation arm): every LLM-planned instruction runs the
+    // ReAct loop. 'adaptive' mode ALWAYS tries the cheap single-call plan
+    // first — closed-loop ReAct is an escalation path, entered when the
+    // planner LLM itself declares the task unplannable upfront
+    // (needsStepByStep) or when the batch plan fails. Upfront ReAct costs
+    // 4-10x latency with the robot frozen between calls, and the LLM with
+    // full scene context is a better judge of plannability than a regex.
+    // The local classifier only picks reasoning DEPTH: complex instructions
+    // get the full structured CoT, simple ones a brief rationale.
     const complexity = classifyComplexity(instruction)
-    if (_activeMode === 'react' || (_activeMode === 'adaptive' && complexity === 'complex')) {
+    if (_activeMode === 'react') {
       cotTrace.record('route', { tier: 'react', complexity })
-      _onThinking?.(`Complex task — reasoning step-by-step (ReAct).`)
+      _onThinking?.(`Reasoning step-by-step (ReAct).`)
       return await runReActPath(instruction, skillRegistry, robot)
     }
     cotTrace.record('route', { tier: 'plan', complexity })
@@ -184,7 +189,9 @@ async function _handleInstructionCore(instruction, skillRegistry) {
       history,
       availableSkills,
       robotState,
-      cotStyle: _activeMode === 'off' ? 'off' : 'structured',
+      cotStyle: _activeMode === 'off' ? 'off'
+        : _activeMode === 'prompt' ? 'structured'
+        : (complexity === 'complex' ? 'structured' : 'brief'),
     })
 
     if (!llmResponse) {
@@ -531,8 +538,10 @@ async function runReActPath(instruction, skillRegistry, robot, failureContext = 
 // ─── Complexity Classifier ─────────────────────────────────────────────────────
 
 /**
- * Cheap local heuristic deciding whether an instruction needs closed-loop
- * ReAct reasoning or a single batch plan suffices. No LLM call — pure regex.
+ * Cheap local heuristic estimating instruction complexity. No LLM call — pure
+ * regex. Used ONLY to pick the reasoning depth of the single planning call
+ * (brief rationale vs full structured CoT) — never to route execution mode;
+ * the planner LLM's own needsStepByStep signal decides ReAct escalation.
  *
  * Complex signals: sequenced clauses, discovery/search, iteration over sets,
  * conditionals, many distinct action verbs.
@@ -656,13 +665,27 @@ export function buildExecutionContext(robot, args, skillRegistry) {
     // colour metadata ("green"), labels ("sports ball") and free descriptions
     // ("the big green ball"). Highest-scoring object wins; ties break toward
     // higher confidence.
+    //
+    // Attributes are DISCRIMINATIVE, not just additive: "blue ball" must never
+    // settle for ball_orange just because "ball" matched — a known-but-different
+    // colour is strong evidence of the WRONG object, so it outweighs a generic
+    // type-word match. (CV colour labels are noisy, so contradiction is a heavy
+    // penalty rather than a hard reject.) A colour alone is never enough either:
+    // "blue ball" must not match a blue stop sign.
     findPerceivedObject: (nameOrDesc) => {
       const desc = String(nameOrDesc || '').toLowerCase().trim()
       if (!desc) return null
       const known = getKnownObjects(0.08)
       if (!known.length) return null
 
+      const COLORS = new Set([
+        'red', 'blue', 'green', 'yellow', 'orange', 'pink', 'purple',
+        'brown', 'wooden', 'white', 'black', 'gray', 'grey',
+      ])
       const dWords = desc.split(/[^a-z0-9]+/).filter(w => w.length > 1 || /\d/.test(w))
+      const dColors = dWords.filter(w => COLORS.has(w))
+      const dRest = dWords.filter(w => !COLORS.has(w) && w !== 'the')
+
       let best = null
       let bestScore = 0
 
@@ -673,17 +696,30 @@ export function buildExecutionContext(robot, args, skillRegistry) {
           ...String(o.meta?.colorName || '').toLowerCase().split(/[^a-z0-9]+/),
           ...String(o.meta?.label || '').toLowerCase().split(/[^a-z0-9]+/),
         ].filter(Boolean))
+        const oColors = [...oWords].filter(w => COLORS.has(w))
 
         let s = 0
         if (idL === desc) s += 6
-        for (const w of dWords) {
-          if (oWords.has(w)) s += 2
+
+        // Colour evidence: match rewards, contradiction heavily penalizes
+        if (dColors.length && oColors.length) {
+          s += dColors.some(c => oColors.includes(c)) ? 3 : -4
+        }
+
+        // Non-colour words (type/name): at least one must land, else no match —
+        // colour similarity alone must not pick an object of the wrong kind
+        let restScore = 0
+        for (const w of dRest) {
+          if (oWords.has(w)) restScore += 2
           else {
             for (const ow of oWords) {
-              if (ow.length > 2 && (ow.includes(w) || w.includes(ow))) { s += 1; break }
+              if (ow.length > 2 && (ow.includes(w) || w.includes(ow))) { restScore += 1; break }
             }
           }
         }
+        if (dRest.length && restScore === 0 && idL !== desc) continue
+        s += restScore
+
         s += Math.min(o.confidence, 1) * 0.8
 
         if (s > bestScore) { bestScore = s; best = o }
