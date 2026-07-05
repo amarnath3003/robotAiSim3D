@@ -483,7 +483,7 @@ async function callLLM(messages, maxTokens = 512, forceJSON = false) {
         model: config.model,
         messages,
         temperature: config.temperature,
-        max_tokens: maxTokens,
+        max_completion_tokens: maxTokens,
       }
 
       // Force JSON-only output when calling for structured plan responses.
@@ -563,7 +563,7 @@ async function callLLMStream(messages, maxTokens = 512, onChunk) {
           model: config.model,
           messages,
           temperature: config.temperature,
-          max_tokens: maxTokens,
+          max_completion_tokens: maxTokens,
           stream: true,
         }),
       })
