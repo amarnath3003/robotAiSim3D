@@ -271,12 +271,18 @@ export async function reactStepWithLLM(instruction, { scratchpad, observation, a
 # ReAct MODE — ONE STEP AT A TIME
 You are reasoning step-by-step in a closed loop. Each turn you produce ONE thought
 and ONE action. After the action executes you receive a fresh observation and think again.
-- Base decisions on the CURRENT observation, not assumptions. Perception decays; objects move.
-- If the target is not in perceived objects, remember navigate_to/pick_up self-search —
-  or scan first if you only need to look.
+- TRUST ACTION RESULTS. If a previous action reported "succeeded", its effect HAPPENED:
+  navigate_to succeeded = you are AT the target now; pick_up succeeded = you are holding it.
+  The perceived-objects list can lag behind — an empty list does NOT undo a successful action.
+  Never re-scan or re-navigate to "verify" something an action result already confirmed.
+- If the target is not in perceived objects AND no action has found it yet, remember
+  navigate_to/pick_up self-search — or scan first if you only need to look.
 - If the previous action FAILED, the observation says why. Change strategy — never repeat
   a failed action unchanged.
-- Declare done:true as soon as the goal is achieved. Do not add unnecessary steps.
+- Do ONLY what the instruction asks. "go to X" needs navigation only — no pick_up,
+  no extra scans after arrival. Extra actions waste steps and can break things.
+- Declare done:true as soon as the goal is achieved — usually right after the final
+  goal-achieving action succeeds. Do not add verification or "just in case" steps.
 - Declare infeasible:true if the task violates robot constraints or is impossible.
 - You have ${maxSteps} steps total. Be economical.`
 

@@ -61,7 +61,12 @@ export async function runReActLoop(instruction, skillRegistry, robot, opts = {})
     }
 
     // ── OBSERVE: fresh world state every iteration ─────────────────────────
-    const observation = buildObservation(robot)
+    // Lead with the previous action's result — models over-trust the (possibly
+    // lagging) perceived-object list and re-verify successes unless the result
+    // is front and center.
+    const last = scratchpad[scratchpad.length - 1]
+    const observation =
+      (last ? `Previous action result: ${last.observation}\n` : '') + buildObservation(robot)
 
     // ── THINK: one LLM call → thought + single action (or done/infeasible) ─
     let decision

@@ -866,6 +866,13 @@ function quickFeasibilityCheck(instruction) {
 function tryDirectMatch(instruction, skillRegistry) {
   const lower = instruction.toLowerCase().trim()
 
+  // Fast path is for SHORT imperative commands only ("turn left 90 degrees",
+  // "scan the room"). Longer sentences must go to the LLM — the loose substring
+  // patterns below (\bwalk\b, \bscan\b, \bstop\b, "go ahead"…) would otherwise
+  // hijack them, run one trivial skill, and report success without doing the
+  // actual task ("walk to the red ball" → bare move_forward → "Task complete").
+  if (lower.split(/\s+/).length > 4) return null
+
   // ── Parse optional numeric qualifiers from the instruction ──────────────
   // Duration: "3 seconds", "2 sec", "1.5s"
   const secMatch = lower.match(/\b(\d+\.?\d*)\s*(?:second|sec|s)\b/)
